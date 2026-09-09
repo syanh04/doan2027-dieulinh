@@ -1,0 +1,9 @@
+path: D:\ĐA GTTM\datasets\vietnam_traffic
+train: images/train
+val: images/val
+
+names:
+  0: Xe may
+  1: O to con
+  2: Xe khach
+  3: Xe tai
