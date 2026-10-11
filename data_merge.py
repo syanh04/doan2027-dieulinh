@@ -1,9 +1,16 @@
+"""
+data_merge.py - Gộp 2 dataset phân loại (Roboflow) thành 1 dataset cân bằng
+và chia train/val theo tỉ lệ 70:30.
+
+Đường dẫn lấy từ module config.py (tự suy ra theo vị trí file).
+"""
 import os
 import shutil
 import random
 
-WORKSPACE_DIR = r"D:\ĐA GTTM"
-DATA_DIR = os.path.join(WORKSPACE_DIR, "datasets")
+from config import DATASETS_DIR
+
+DATA_DIR = os.path.join(str(DATASETS_DIR))
 MERGED_DIR = os.path.join(DATA_DIR, "vietnam_traffic_cls")
 
 ds1_path = os.path.join(DATA_DIR, "vehicles-classification-1")

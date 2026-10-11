@@ -3,6 +3,8 @@ import matplotlib.pyplot as plt
 import os
 import sys
 
+from config import SURVEY_RESULTS_DIR
+
 def analyze_time(csv_path):
     if not os.path.exists(csv_path):
         print(f"File không tồn tại: {csv_path}")
@@ -59,7 +61,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         path = sys.argv[1]
     else:
-        # Default path
-        path = r"D:\ĐA GTTM\survey_results\yolov8n_cls\results.csv"
+        # Default path (tự động suy ra từ config.py)
+        path = os.path.join(str(SURVEY_RESULTS_DIR), "yolov8n_cls", "results.csv")
         
     analyze_time(path)

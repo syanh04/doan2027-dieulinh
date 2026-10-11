@@ -1,0 +1,25 @@
+# =============================================================================
+# TrafficVision AI - chạy bằng:  docker compose up --build
+#                                -> http://127.0.0.1:5000
+# =============================================================================
+services:
+  web:
+    build:
+      context: .
+      # Tuỳ chọn - build GPU (yêu cầu WSL2 + NVIDIA Container Toolkit):
+      # args:
+      #   TORCH_INDEX: https://download.pytorch.org/whl/cu128
+    image: traffic-vision-ai:latest
+    container_name: traffic-vision-ai
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    # Nạp biến môi trường từ .env (copy .env.example -> .env nếu muốn
+    # hiệu chỉnh ROI / ngưỡng ùn tắc). File vắng mặt cũng không lỗi.
+    # (cần Docker Compose v2.24+; bản cũ hơn: tạo .env rồi đổi thành `env_file: [.env]`)
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      # Video người dùng upload giữ ngoài container (không mất khi rebuild)
+      - ./uploads:/app/uploads

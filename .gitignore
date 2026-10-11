@@ -3,3 +3,37 @@ weights/
 runs/
 deep_train_results/
 *.pt
+
+# --- Dọn dẹp & bảo mật ---
+# LƯU Ý: gitignore KHÔNG hỗ trợ comment ở cuối dòng (sau pattern).
+# Comment bắt buộc phải nằm trên dòng riêng, nếu không sẽ trở thành
+# một phần của pattern và khiến rule không hoạt động.
+
+# Video người dùng upload (dung lượng rất lớn)
+uploads/
+# Video mẫu được sinh tự động bởi create_sample_video.py
+static/samples/*.mp4
+static/samples/*.webm
+
+__pycache__/
+*.py[cod]
+*.log
+null
+final_check.txt
+
+# File tam thoi khi phat trien / tao video mau
+_scene_cache.txt
+_probe/
+_chk/
+_*.py
+_*.png
+_*.jpg
+_*.jpeg
+
+# Bí quết - KHÔNG BAO GIỜ commit
+.env
+
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store

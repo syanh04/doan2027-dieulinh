@@ -1,0 +1,15 @@
+# =============================================================================
+# Dependency cho image Docker (image Python 3.12).
+# Phiên bản pin theo đúng môi trường local đang chạy ổn định:
+#   Flask 3.1.3, ultralytics 8.4.144 -> tái lập y hệt trong container.
+# torch/torchvision KHÔNG liệt kê ở đây - Dockerfile cài trước từ index CPU
+# (hoặc build-arg TORCH_INDEX nếu build GPU), để pip không ghi đè bản CPU.
+# =============================================================================
+flask==3.1.3
+ultralytics==8.4.144
+
+# WSGI server thay cho app.run(debug=True) khi chạy trong container
+gunicorn>=23.0
+
+# config.py tự fallback parser nếu không có package này, nhưng cài cho chuẩn
+python-dotenv>=1.0

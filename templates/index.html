@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hệ Thống Giám Sát Giao Thông & Cảnh Báo Ùn Tắc AI</title>
+    <!-- Google Fonts & Icons -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+    <!-- Header Navigation -->
+    <header class="app-header">
+        <div class="header-brand">
+            <div class="brand-icon">
+                <i class="fa-solid fa-traffic-light"></i>
+            </div>
+            <div class="brand-text">
+                <h1>TRAFFIC<span>VISION AI</span></h1>
+                <p>Hệ thống Nhận diện Phương tiện & Cảnh báo Ùn tắc Giao thông</p>
+            </div>
+        </div>
+        
+        <div class="header-status">
+            <div class="status-badge" id="systemStatus">
+                <span class="pulse-dot green"></span>
+                <span>YOLO Engine Active</span>
+            </div>
+            <div class="clock-box" id="liveClock">00:00:00</div>
+        </div>
+    </header>
+
+    <main class="dashboard-container">
+        
+        <!-- Congestion Alert Banner (Dynamic) -->
+        <div class="alert-banner-wrapper" id="alertBannerWrapper">
+            <div class="alert-banner status-none" id="alertBanner">
+                <div class="alert-icon" id="alertIcon">
+                    <i class="fa-solid fa-shield-halved"></i>
+                </div>
+                <div class="alert-content">
+                    <div class="alert-title-group">
+                        <span class="alert-badge" id="alertBadge">SẴN SÀNG</span>
+                        <h2 id="alertTitle">Vui lòng tải ảnh lên hoặc chụp từ camera để kiểm thử</h2>
+                    </div>
+                    <p id="alertDesc">Hệ thống sẽ tự động phân tích lưu lượng xe, nhận diện chủng loại và cảnh báo cấp độ ùn tắc.</p>
+                </div>
+                <div class="sound-toggle-box">
+                    <button class="btn-sound" id="btnSoundToggle" title="Bật/Tắt âm thanh cảnh báo">
+                        <i class="fa-solid fa-volume-high"></i> Âm thanh
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Controls Toolbar -->
+        <section class="toolbar-card">
+            <div class="toolbar-group">
+                <label><i class="fa-solid fa-sliders"></i> Chế độ xử lý:</label>
+                <div class="segmented-control">
+                    <button class="seg-btn active" data-mode="detection">
+                        <i class="fa-solid fa-boxes-stacked"></i> Phát hiện & Đếm xe
+                    </button>
+                    <button class="seg-btn" data-mode="classification">
+                        <i class="fa-solid fa-car-side"></i> Phân loại xe đơn (Custom AI)
+                    </button>
+                </div>
+            </div>
+
+            <div class="toolbar-group">
+                <label for="confSlider"><i class="fa-solid fa-bullseye"></i> Ngưỡng tin cậy (Confidence): <span id="confVal">15%</span></label>
+                <input type="range" id="confSlider" min="5" max="90" value="15" step="5">
+            </div>
+        </section>
+
+        <!-- Main Split Workarea -->
+        <div class="workarea-grid">
+            
+            <!-- Left Side: Input & Samples -->
+            <div class="panel-card input-panel">
+                <div class="panel-header">
+                    <h3><i class="fa-solid fa-cloud-arrow-up"></i> Nguồn hình ảnh thử nghiệm</h3>
+                    <div class="tab-buttons">
+                        <button class="tab-btn active" data-tab="upload"><i class="fa-solid fa-file-image"></i> Tải ảnh</button>
+                        <button class="tab-btn" data-tab="video"><i class="fa-solid fa-video"></i> Tải Video</button>
+                        <button class="tab-btn" data-tab="webcam"><i class="fa-solid fa-camera"></i> Live Camera</button>
+                    </div>
+                </div>
+
+                <!-- Tab 1: File Upload -->
+                <div class="tab-content active" id="tabUpload">
+                    <div class="dropzone" id="dropzone">
+                        <input type="file" id="fileInput" accept="image/*" class="file-input">
+                        <div class="dropzone-inner">
+                            <div class="drop-icon"><i class="fa-solid fa-image"></i></div>
+                            <h4>Kéo & Thả ảnh giao thông vào đây</h4>
+                            <p>Hoặc <span>Chọn tệp từ máy tính</span> (JPG, PNG, WEBP)</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab 2: Video Upload & Testing -->
+                <div class="tab-content" id="tabVideo">
+                    <div class="dropzone" id="videoDropzone">
+                        <input type="file" id="videoFileInput" accept="video/*" class="file-input">
+                        <div class="dropzone-inner">
+                            <div class="drop-icon" style="color: #4facfe;"><i class="fa-solid fa-file-video"></i></div>
+                            <h4>Kéo & Thả file Video giao thông vào đây</h4>
+                            <p>Hoặc <span>Chọn Video từ máy tính</span> (MP4, AVI, MOV)</p>
+                        </div>
+                    </div>
+                    <div class="sample-video-box" style="margin-top: 12px;">
+                        <button class="btn btn-primary" id="btnPlaySampleVideo" style="width: 100%;">
+                            <i class="fa-solid fa-play"></i> Thử nghiệm Video Giao Thông Mẫu
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Tab 3: Webcam Camera -->
+                <div class="tab-content" id="tabWebcam">
+                    <div class="webcam-container">
+                        <video id="webcamVideo" autoplay playsinline muted></video>
+                        <canvas id="webcamCanvas" style="display: none;"></canvas>
+                        <div class="webcam-overlay" id="webcamOverlay">
+                            <p>Nhấp bên dưới để khởi động Camera</p>
+                        </div>
+                    </div>
+                    <div class="webcam-actions">
+                        <button class="btn btn-primary" id="btnStartCam"><i class="fa-solid fa-power-off"></i> Mở Camera</button>
+                        <button class="btn btn-accent" id="btnCaptureCam" disabled><i class="fa-solid fa-camera-retro"></i> Chụp & Phân tích</button>
+                    </div>
+                </div>
+
+                <!-- Preset Samples Section -->
+                <div class="samples-section">
+                    <h4><i class="fa-solid fa-bolt"></i> Dùng thử nhanh 1-Click mẫu ảnh thực tế:</h4>
+                    <div class="samples-grid" id="samplesGrid">
+                        <div class="sample-skeleton">Đang tải danh sách mẫu...</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Side: Analytics & Detection Display -->
+            <div class="panel-card display-panel">
+                <div class="panel-header">
+                    <h3><i class="fa-solid fa-eye"></i> Kết quả nhận diện & Phân tích</h3>
+                    <div class="meta-tag" id="processTimeTag"><i class="fa-solid fa-bolt-lightning"></i> -- ms</div>
+                </div>
+
+                <div class="image-viewport">
+                    <div class="loading-overlay" id="loadingOverlay">
+                        <div class="spinner"></div>
+                        <p>Đang phân tích qua mô hình YOLO AI...</p>
+                    </div>
+
+                    <div class="placeholder-view" id="placeholderView">
+                        <i class="fa-solid fa-chart-line"></i>
+                        <p>Hình ảnh/Video và phân tích bounding box sẽ hiển thị tại đây</p>
+                    </div>
+
+                    <img id="resultImage" class="result-image" style="display: none;" alt="Kết quả nhận diện">
+                    <img id="videoStream" class="result-image" style="display: none;" alt="Luồng Video nhận diện realtime">
+                </div>
+
+                <!-- Stat Cards Grid -->
+                <div class="stats-cards-grid">
+                    <div class="stat-card primary">
+                        <div class="stat-icon"><i class="fa-solid fa-car"></i></div>
+                        <div class="stat-info">
+                            <span class="stat-label">Tổng số phương tiện</span>
+                            <span class="stat-value" id="valTotalVehicles">0</span>
+                        </div>
+                    </div>
+
+                    <div class="stat-card accent">
+                        <div class="stat-icon"><i class="fa-solid fa-gauge-high"></i></div>
+                        <div class="stat-info">
+                            <span class="stat-label">Chỉ số PCU Lưu lượng</span>
+                            <span class="stat-value" id="valPcuScore">0.0</span>
+                        </div>
+                    </div>
+
+                    <div class="stat-card mini">
+                        <div class="stat-icon-mini xe-may"><i class="fa-solid fa-motorcycle"></i></div>
+                        <div>
+                            <span class="mini-label">Xe máy</span>
+                            <span class="mini-val" id="cntXeMay">0</span>
+                        </div>
+                    </div>
+
+                    <div class="stat-card mini">
+                        <div class="stat-icon-mini o-to"><i class="fa-solid fa-car-side"></i></div>
+                        <div>
+                            <span class="mini-label">Ô tô con</span>
+                            <span class="mini-val" id="cntOTo">0</span>
+                        </div>
+                    </div>
+
+                    <div class="stat-card mini">
+                        <div class="stat-icon-mini xe-khach"><i class="fa-solid fa-bus"></i></div>
+                        <div>
+                            <span class="mini-label">Xe khách</span>
+                            <span class="mini-val" id="cntXeKhach">0</span>
+                        </div>
+                    </div>
+
+                    <div class="stat-card mini">
+                        <div class="stat-icon-mini xe-tai"><i class="fa-solid fa-truck"></i></div>
+                        <div>
+                            <span class="mini-label">Xe tải</span>
+                            <span class="mini-val" id="cntXeTai">0</span>
+                        </div>
+                    </div>
+
+                    <div class="stat-card density">
+                        <div class="stat-icon"><i class="fa-solid fa-grip-lines"></i></div>
+                        <div class="stat-info">
+                            <span class="stat-label">Mật độ (trong ROI)</span>
+                            <span class="stat-value" id="valDensity">0 <small>xe/km</small></span>
+                        </div>
+                    </div>
+
+                    <div class="stat-card flow">
+                        <div class="stat-icon"><i class="fa-solid fa-arrow-trend-up"></i></div>
+                        <div class="stat-info">
+                            <span class="stat-label">Lưu lượng (xe/giờ)</span>
+                            <span class="stat-value" id="valFlow">&mdash;</span>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- Charts & Log Section -->
+        <div class="analytics-row">
+            <div class="panel-card chart-card">
+                <div class="panel-header">
+                    <h3><i class="fa-solid fa-chart-pie"></i> Tỉ lệ phân bố phương tiện</h3>
+                </div>
+                <div class="chart-container">
+                    <canvas id="vehicleChart"></canvas>
+                </div>
+            </div>
+
+            <div class="panel-card history-card">
+                <div class="panel-header">
+                    <h3><i class="fa-solid fa-clock-rotate-left"></i> Nhật ký kiểm thử thời gian thực</h3>
+                    <button class="btn-sm" id="btnClearHistory"><i class="fa-solid fa-trash-can"></i> Xóa lịch sử</button>
+                </div>
+                <div class="table-responsive">
+                    <table class="history-table">
+                        <thead>
+                            <tr>
+                                <th>Thời gian</th>
+                                <th>Tổng phương tiện</th>
+                                <th>Chi tiết loại xe</th>
+                                <th>Mức độ ùn tắc</th>
+                                <th>Xử lý</th>
+                            </tr>
+                        </thead>
+                        <tbody id="historyTableBody">
+                            <tr class="empty-row">
+                                <td colspan="5">Chưa có nhật ký kiểm thử. Hãy tải ảnh lên để bắt đầu.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Audio Element for Congestion Alert -->
+    <audio id="alarmAudio" preload="auto" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"></audio>
+
+    <script src="/static/js/main.js"></script>
+</body>
+</html>

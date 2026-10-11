@@ -1,12 +1,21 @@
+"""
+data_prep.py - Tải dataset từ Roboflow, gộp và chia train/val cho bài toán
+phân loại phương tiện giao thông.
+
+Cấu hình (đường dẫn + API key) lấy từ module config.py thay vì hardcode.
+"""
 import os
 import shutil
 import glob
 import random
 from roboflow import Roboflow
 
-API_KEY = "vSPJ05iPRs3Cyx1c8p2h"
-WORKSPACE_DIR = r"D:\ĐA GTTM"
-DATA_DIR = os.path.join(WORKSPACE_DIR, "datasets")
+from config import WORKSPACE_DIR, DATASETS_DIR, get_api_key
+
+# API key đọc từ biến môi trường ROBOFLOW_API_KEY (xem .env.example)
+API_KEY = get_api_key(required=True)
+
+DATA_DIR = str(DATASETS_DIR)
 MERGED_DIR = os.path.join(DATA_DIR, "vietnam_traffic_cls")
 
 os.makedirs(DATA_DIR, exist_ok=True)

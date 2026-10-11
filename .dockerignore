@@ -1,0 +1,49 @@
+# =============================================================================
+# Loại khỏi build context (context nhẹ + không rò rỉ secret/file thừa)
+# =============================================================================
+
+# Secret - KHÔNG BAO GIỜ đưa vào image
+.env
+
+# Dữ liệu lớn không dùng khi chạy web app
+datasets/
+uploads/
+
+# Thư mục huấn luyện ~534MB - chỉ giữ 1 file best.pt (xem exception bên dưới)
+runs/*
+!runs/classify
+runs/classify/*
+!runs/classify/deep_train_results
+runs/classify/deep_train_results/*
+!runs/classify/deep_train_results/yolov8s-cls_100ep
+runs/classify/deep_train_results/yolov8s-cls_100ep/*
+!runs/classify/deep_train_results/yolov8s-cls_100ep/weights
+runs/classify/deep_train_results/yolov8s-cls_100ep/weights/*
+!runs/classify/deep_train_results/yolov8s-cls_100ep/weights/best.pt
+
+# Trọng số thừa không dùng khi runtime (app chỉ cần yolov8s/n.pt + best.pt)
+weights/
+yolov8n-cls.pt
+yolov8s-cls.pt
+
+# Git / IDE
+.git/
+.vscode/
+.idea/
+
+# File log, backup, tạm của quá trình phát triển
+*.log
+*.bak
+*.py[cod]
+__pycache__/
+_scene_cache.txt
+final_check.txt
+null
+server_out.log
+server_err.log
+_tmp_*
+_chk/
+_probe/
+
+# Script/notebook không tham gia runtime web app
+*.ipynb
