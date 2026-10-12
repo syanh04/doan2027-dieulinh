@@ -2,12 +2,17 @@ import os
 import io
 import time
 import base64
+import torch
 import numpy as np
 import cv2
 from collections import deque
 from PIL import Image, ImageDraw, ImageFont
-from flask import Flask, render_template, request, jsonify, send_from_directory
+from flask import Flask, render_template, request, jsonify, send_from_directory, session, redirect, url_for
+from functools import wraps
+from werkzeug.security import generate_password_hash, check_password_hash
 from ultralytics import YOLO
+
+SERVER_START_TIME = time.time()
 
 # Đường dẫn & trọng số lấy từ config.py (tự suy ra theo vị trí file -> chạy được ở mọi ổ đĩa)
 from config import (
@@ -19,11 +24,44 @@ from config import (
     DET_RECALL_PASS, DET_RECALL_CONF, DET_RECALL_IMGSZ, DET_RECALL_PAD, DET_MERGE_IOU,
 )
 
+from traffic_db import (
+    get_camera_history, record_minute_metric, authenticate_user,
+    query_audit_logs, count_audit_logs, clear_audit_logs, add_audit_log,
+    register_uploaded_video, list_uploaded_videos, get_uploaded_video, delete_uploaded_video
+)
+from forecaster import forecaster
+from camera_manager import camera_manager
+
 app = Flask(
     __name__,
     template_folder=str(WORKSPACE_DIR / "templates"),
     static_folder=str(WORKSPACE_DIR / "static"),
 )
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "trafficvision-enterprise-secure-key-2026")
+
+
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if "user" not in session:
+            if request.path.startswith("/api/"):
+                return jsonify({"success": False, "error": "Unauthorized", "login_required": True}), 401
+            return redirect(url_for("login_page"))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+def admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if "user" not in session:
+            if request.path.startswith("/api/"):
+                return jsonify({"success": False, "error": "Unauthorized", "login_required": True}), 401
+            return redirect(url_for("login_page"))
+        if session.get("user", {}).get("role") != "admin":
+            return jsonify({"success": False, "error": "Forbidden: Yêu cầu quyền Quản trị viên (Admin)"}), 403
+        return f(*args, **kwargs)
+    return decorated_function
 
 # Load models globally
 print("[INFO] Loading YOLO models...")
@@ -40,6 +78,7 @@ if os.path.exists(CLS_WEIGHTS_PATH):
 try:
     det_model = YOLO(DET_WEIGHTS_PATH)
     print("[SUCCESS] Loaded Object Detection Model:", DET_WEIGHTS_PATH)
+    camera_manager.initialize(det_model)
 except Exception as e:
     print("[ERROR] Failed to load detection model:", e)
 
@@ -424,32 +463,363 @@ def draw_roi_overlay(img, w, h, level):
                 cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
     return img
 
+@app.route("/login")
+def login_page():
+    if "user" in session:
+        return redirect(url_for("index"))
+    return render_template("login.html")
+
+@app.route("/api/auth/login", methods=["POST"])
+def api_login():
+    data = request.get_json() or {}
+    username = data.get("username", "")
+    password = data.get("password", "")
+    success, res = authenticate_user(username, password)
+    if success:
+        session["user"] = res
+        add_audit_log(
+            event_type="AUTH_LOGIN",
+            status_text="Đăng nhập thành công",
+            username=res["username"],
+            details=f"Đăng nhập thành công với vai trò {res['role']}"
+        )
+        return jsonify({"success": True, "user": res})
+    else:
+        return jsonify({"success": False, "message": res}), 401
+
+@app.route("/api/auth/logout", methods=["POST", "GET"])
+def api_logout():
+    u = session.get("user")
+    if u:
+        add_audit_log(
+            event_type="AUTH_LOGOUT",
+            status_text="Đăng xuất",
+            username=u["username"],
+            details="Người dùng chủ động đăng xuất khỏi phiên làm việc"
+        )
+    session.pop("user", None)
+    if request.is_json or request.path.startswith("/api/"):
+        return jsonify({"success": True})
+    return redirect(url_for("login_page"))
+
+@app.route("/api/auth/me", methods=["GET"])
+def api_auth_me():
+    if "user" not in session:
+        return jsonify({"authenticated": False}), 401
+    return jsonify({"authenticated": True, "user": session["user"]})
+
 @app.route("/")
+@login_required
 def index():
-    return render_template("index.html")
+    return render_template("index.html", user=session.get("user"))
 
 @app.route("/api/samples", methods=["GET"])
+@login_required
 def get_samples():
     sample_dir = os.path.join(app.static_folder, "samples")
     samples = []
     if os.path.exists(sample_dir):
         for f in os.listdir(sample_dir):
-            if f.lower().endswith(('.jpg', '.png', '.jpeg', '.webp')):
+            if f.lower().endswith(('.jpg', '.png', '.jpeg', '.webp', '.mp4')):
                 samples.append({
                     "filename": f,
                     "url": f"/static/samples/{f}",
-                    "title": f.replace("sample_", "").replace(".jpg", "").replace("_", " ").title()
+                    "title": f.replace("sample_", "").replace(".jpg", "").replace(".mp4", "").replace("_", " ").title()
                 })
     return jsonify({"samples": samples})
 
-@app.route("/api/stats", methods=["GET"])
-def get_stats():
+@app.route("/api/cameras", methods=["GET"])
+@login_required
+def get_cameras():
     return jsonify({
-        "accuracy": "97.12%",
-        "model_name": "YOLOv8s-cls (100 Epochs) & YOLOv8 Detection",
-        "supported_classes": ["Xe máy", "Ô tô con", "Xe khách", "Xe tải"],
-        "cls_loaded": cls_model is not None,
-        "det_loaded": det_model is not None
+        "success": True,
+        "cameras": camera_manager.get_cameras_info(),
+        "stations": camera_manager.get_cameras_info()
+    })
+
+@app.route("/api/cameras/<camera_id>/source", methods=["POST"])
+@admin_required
+def set_camera_source(camera_id):
+    """
+    Tải lên video hoặc gán file mẫu cho một camera cụ thể.
+    Tự động reset metrics và tạo phiên session_id mới cho camera đó.
+    """
+    worker = camera_manager.get_worker(camera_id)
+    if not worker:
+        return jsonify({"success": False, "error": f"Camera {camera_id} không tồn tại"}), 404
+
+    # 1. Trường hợp chọn từ danh sách video có sẵn
+    if request.is_json:
+        data = request.get_json()
+        sample_path = data.get("source_path")
+        if sample_path and os.path.exists(os.path.join(str(WORKSPACE_DIR), sample_path)):
+            ok, msg = camera_manager.assign_source(camera_id, sample_path, source_type="cctv_sample")
+            return jsonify({"success": ok, "message": msg})
+
+    # 2. Trường hợp upload file mp4 mới
+    if "file" not in request.files:
+        return jsonify({"success": False, "error": "Không có tệp video được gửi lên"}), 400
+
+    file = request.files["file"]
+    if file.filename == "":
+        return jsonify({"success": False, "error": "Chưa chọn tệp video"}), 400
+
+    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+    if ext not in ["mp4", "avi", "mov", "mkv"]:
+        return jsonify({"success": False, "error": "Định dạng không hỗ trợ (chỉ nhận MP4, AVI, MOV, MKV)"}), 400
+
+    # Lưu file vào thư mục upload riêng của camera
+    cam_upload_dir = os.path.join(UPLOAD_FOLDER, camera_id)
+    os.makedirs(cam_upload_dir, exist_ok=True)
+    
+    unique_name = f"{int(time.time())}_{uuid.uuid4().hex[:6]}.{ext}"
+    saved_abs_path = os.path.join(cam_upload_dir, unique_name)
+    file.save(saved_abs_path)
+
+    # Đọc metadata bằng OpenCV
+    cap = cv2.VideoCapture(saved_abs_path)
+    if not cap.isOpened():
+        os.remove(saved_abs_path)
+        return jsonify({"success": False, "error": "Tệp video không hợp lệ hoặc bị hỏng"}), 400
+
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    fps = float(cap.get(cv2.CAP_PROP_FPS)) or 30.0
+    w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    cap.release()
+
+    duration_sec = total_frames / max(1.0, fps)
+    size_mb = os.path.getsize(saved_abs_path) / (1024 * 1024)
+    rel_path = os.path.relpath(saved_abs_path, str(WORKSPACE_DIR)).replace("\\", "/")
+
+    # Đăng ký vào bảng uploaded_videos
+    video_id = str(uuid.uuid4())[:8]
+    user = session.get("user", {})
+    register_uploaded_video(
+        video_id=video_id,
+        camera_id=camera_id,
+        original_name=file.filename,
+        file_path=rel_path,
+        file_size_mb=size_mb,
+        duration_sec=duration_sec,
+        fps=fps,
+        resolution=f"{w}x{h}",
+        uploaded_by=user.get("username", "admin")
+    )
+
+    # Gán video mới cho worker
+    ok, msg = camera_manager.assign_source(camera_id, rel_path, source_type="upload")
+
+    return jsonify({
+        "success": ok,
+        "message": f"Đã gán video {file.filename} cho {camera_id} và bắt đầu phiên phân tích mới.",
+        "video": {
+            "id": video_id,
+            "camera_id": camera_id,
+            "filename": file.filename,
+            "path": rel_path,
+            "duration_sec": round(duration_sec, 1),
+            "fps": round(fps, 1),
+            "resolution": f"{w}x{h}",
+            "size_mb": round(size_mb, 2)
+        }
+    })
+
+@app.route("/api/videos", methods=["GET"])
+@login_required
+def get_uploaded_videos_list():
+    videos = list_uploaded_videos()
+    return jsonify({"success": True, "videos": videos})
+
+@app.route("/api/videos/<video_id>", methods=["DELETE"])
+@admin_required
+def delete_video_endpoint(video_id):
+    deleted = delete_uploaded_video(video_id)
+    if deleted:
+        return jsonify({"success": True, "message": "Đã xóa video thành công"})
+    return jsonify({"success": False, "error": "Video không tồn tại"}), 404
+
+@app.route("/api/logs", methods=["GET"])
+@login_required
+def get_audit_logs():
+    cam_id = request.args.get("camera_id", "ALL")
+    level = request.args.get("level", "ALL")
+    search = request.args.get("search", "")
+    limit = int(request.args.get("limit", 50))
+    offset = int(request.args.get("offset", 0))
+
+    logs = query_audit_logs(camera_id=cam_id, status_level=level, search=search, limit=limit, offset=offset)
+    total = count_audit_logs(camera_id=cam_id, status_level=level, search=search)
+
+    return jsonify({
+        "success": True,
+        "logs": logs,
+        "total": total,
+        "limit": limit,
+        "offset": offset
+    })
+
+@app.route("/api/logs/clear", methods=["POST"])
+@admin_required
+def clear_logs_endpoint():
+    clear_audit_logs()
+    add_audit_log(
+        event_type="CONFIG",
+        status_text="Xóa nhật ký",
+        username=session.get("user", {}).get("username"),
+        details="Quản trị viên đã xóa toàn bộ nhật ký hệ thống"
+    )
+    return jsonify({"success": True, "message": "Đã xóa toàn bộ nhật ký sự kiện"})
+
+@app.route("/api/logs/export", methods=["GET"])
+@login_required
+def export_logs_csv():
+    """Xuất CSV với UTF-8 BOM để Excel hiển thị tiếng Việt không bị lỗi font"""
+    cam_id = request.args.get("camera_id", "ALL")
+    level = request.args.get("level", "ALL")
+    logs = query_audit_logs(camera_id=cam_id, status_level=level, limit=2000)
+
+    output = io.StringIO()
+    output.write("\ufeff") # UTF-8 BOM
+    output.write("Thời gian,Trạm Camera,Lưu lượng Q (xe/h),Mật độ K (xe/km),PCU,Tốc độ (km/h),Trạng thái,Khuyến nghị,Ghi chú\n")
+
+    for l in logs:
+        time_str = l.get("time_str", "")
+        c_id = l.get("camera_id", "ALL")
+        q = l.get("flow") or ""
+        k = l.get("density") or ""
+        p = l.get("pcu") or ""
+        v = l.get("speed") or ""
+        st = (l.get("status_text") or "").replace('"', '""')
+        adv = (l.get("advice") or "").replace('"', '""')
+        det = (l.get("details") or "").replace('"', '""')
+        output.write(f'"{time_str}","{c_id}","{q}","{k}","{p}","{v}","{st}","{adv}","{det}"\n')
+
+    from flask import Response
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f"attachment;filename=traffic_audit_logs_{int(time.time())}.csv"}
+    )
+
+@app.route("/api/stream/<camera_id>")
+def get_camera_stream(camera_id):
+    worker = camera_manager.get_worker(camera_id)
+    if not worker:
+        return "Camera not found", 404
+
+    quality = request.args.get("quality", "low")
+
+    def stream_gen():
+        while True:
+            buf = worker.latest_jpeg_high if quality == "high" else worker.latest_jpeg_low
+            if buf is not None:
+                yield (b'--frame\r\n'
+                       b'Content-Type: image/jpeg\r\n\r\n' + buf + b'\r\n')
+            time.sleep(0.04)
+
+    return app.response_class(stream_gen(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route("/api/metrics", methods=["GET"])
+@login_required
+def get_traffic_metrics():
+    camera_id = request.args.get("camera_id", "ALL")
+    range_param = request.args.get("range", "15m")
+    minutes = 15 if range_param == "15m" else (5 if range_param == "5m" else (1 if range_param == "1m" else 60))
+    history = get_camera_history(camera_id=camera_id, limit_minutes=minutes)
+    return jsonify({
+        "success": True,
+        "camera_id": camera_id,
+        "range": range_param,
+        "history": history
+    })
+
+@app.route("/api/forecast", methods=["GET"])
+@login_required
+def get_traffic_forecast():
+    camera_id = request.args.get("camera_id", "ALL")
+    horizon = int(request.args.get("horizon", 30))
+    model_type = request.args.get("model", "holt_winters")
+    history = get_camera_history(camera_id=camera_id, limit_minutes=60)
+    result = forecaster.predict(history, horizon_minutes=horizon, model_type=model_type)
+    return jsonify({
+        "success": True,
+        "camera_id": camera_id,
+        **result
+    })
+
+@app.route("/api/stream_events")
+def stream_events():
+    def event_stream():
+        while True:
+            payload = {
+                "cameras": camera_manager.get_cameras_info(),
+                "timestamp": int(time.time())
+            }
+            yield f"data: {json.dumps(payload)}\n\n"
+            time.sleep(1.2)
+    return app.response_class(event_stream(), mimetype="text/event-stream")
+
+@app.route("/api/system_telemetry", methods=["GET"])
+def get_system_telemetry():
+    cuda_avail = torch.cuda.is_available()
+    device_name = torch.cuda.get_device_name(0) if cuda_avail else "CPU"
+    vram_used_mb = round(torch.cuda.memory_allocated(0) / (1024 * 1024), 1) if cuda_avail else 0
+    vram_total_mb = round(torch.cuda.get_device_properties(0).total_memory / (1024 * 1024), 1) if cuda_avail else 0
+    return jsonify({
+        "success": True,
+        "cuda_available": cuda_avail,
+        "device_name": device_name,
+        "cuda_version": torch.version.cuda if cuda_avail else None,
+        "vram_used_mb": vram_used_mb,
+        "vram_total_mb": vram_total_mb,
+        "pytorch_version": torch.__version__,
+        "uptime_sec": int(time.time() - SERVER_START_TIME),
+        "det_model": "YOLOv8s Detection (Active)",
+        "cls_model": "YOLOv8s-cls Custom (Active)" if cls_model is not None else "COCO Direct Map"
+    })
+
+@app.route("/api/config", methods=["GET", "POST"])
+def handle_config():
+    global ROI_NORM, ROI_REAL_LENGTH_M, ROI_REAL_WIDTH_M, _DENSITY_KM, DENSITY_THRESHOLDS, OCCUPANCY_THRESHOLDS, PCU_WEIGHTS
+    if request.method == "POST":
+        data = request.get_json() or {}
+        if "roi_norm" in data and len(data["roi_norm"]) == 4:
+            ROI_NORM = np.array(data["roi_norm"], dtype=np.float32)
+        if "roi_length_m" in data and float(data["roi_length_m"]) > 0:
+            ROI_REAL_LENGTH_M = float(data["roi_length_m"])
+            _DENSITY_KM = ROI_REAL_LENGTH_M / 1000.0
+        if "roi_width_m" in data and float(data["roi_width_m"]) > 0:
+            ROI_REAL_WIDTH_M = float(data["roi_width_m"])
+        if "density_thresholds" in data and len(data["density_thresholds"]) == 3:
+            DENSITY_THRESHOLDS = [float(x) for x in data["density_thresholds"]]
+        if "occupancy_thresholds" in data and len(data["occupancy_thresholds"]) == 3:
+            OCCUPANCY_THRESHOLDS = [float(x) for x in data["occupancy_thresholds"]]
+        if "pcu_weights" in data:
+            PCU_WEIGHTS.update({k: float(v) for k, v in data["pcu_weights"].items()})
+        return jsonify({
+            "success": True,
+            "message": "Cấu hình đã được cập nhật trực tiếp vào hệ thống!",
+            "config": {
+                "roi_norm": ROI_NORM.tolist(),
+                "roi_length_m": ROI_REAL_LENGTH_M,
+                "roi_width_m": ROI_REAL_WIDTH_M,
+                "density_thresholds": DENSITY_THRESHOLDS,
+                "occupancy_thresholds": OCCUPANCY_THRESHOLDS,
+                "pcu_weights": PCU_WEIGHTS
+            }
+        })
+    # GET method
+    return jsonify({
+        "success": True,
+        "config": {
+            "roi_norm": ROI_NORM.tolist(),
+            "roi_length_m": ROI_REAL_LENGTH_M,
+            "roi_width_m": ROI_REAL_WIDTH_M,
+            "density_thresholds": DENSITY_THRESHOLDS,
+            "occupancy_thresholds": OCCUPANCY_THRESHOLDS,
+            "pcu_weights": PCU_WEIGHTS
+        }
     })
 
 @app.route("/api/predict", methods=["POST"])
@@ -1016,12 +1386,13 @@ def generate_video_frames(filename, filepath, conf_thresh=0.25):
 
 @app.route("/video_feed/<filename>")
 def video_feed(filename):
-    if filename == "sample_traffic.mp4":
-        filepath = os.path.join(app.static_folder, "samples", "sample_traffic.mp4")
+    sample_path = os.path.join(app.static_folder, "samples", filename)
+    upload_path = os.path.join(UPLOAD_FOLDER, filename)
+    if os.path.exists(sample_path):
+        filepath = sample_path
+    elif os.path.exists(upload_path):
+        filepath = upload_path
     else:
-        filepath = os.path.join(UPLOAD_FOLDER, filename)
-
-    if not os.path.exists(filepath):
         return "Video file not found", 404
 
     conf = float(request.args.get("conf", 0.25))

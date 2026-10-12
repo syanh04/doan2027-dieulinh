@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="vi" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Đăng nhập | TrafficVision Enterprise</title>
+    <link rel="stylesheet" href="/static/css/tokens.css">
+    <script src="/static/js/lucide.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: var(--font-sans);
+        }
+        body {
+            background-color: var(--bg-canvas);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+        }
+        .login-card {
+            background-color: var(--bg-panel);
+            border: 1px solid var(--border-default);
+            border-radius: var(--radius);
+            width: 100%;
+            max-width: 400px;
+            padding: 32px 28px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+        }
+        .brand-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+        .brand-icon {
+            width: 36px;
+            height: 36px;
+            background-color: var(--accent-blue-subtle);
+            border: 1px solid var(--accent-blue);
+            color: var(--accent-blue);
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .brand-text h1 {
+            font-size: 16px;
+            font-weight: 600;
+            letter-spacing: -0.2px;
+        }
+        .brand-text p {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+        .form-group {
+            margin-bottom: 16px;
+        }
+        .form-group label {
+            display: block;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+        }
+        .form-input {
+            width: 100%;
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-default);
+            color: var(--text-primary);
+            padding: 10px 12px;
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            outline: none;
+            transition: border-color 0.15s ease;
+        }
+        .form-input:focus {
+            border-color: var(--border-focus);
+        }
+        .btn-submit {
+            width: 100%;
+            background-color: var(--accent-blue);
+            color: #ffffff;
+            border: none;
+            padding: 10px 14px;
+            border-radius: var(--radius-sm);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 20px;
+            transition: background-color 0.15s ease;
+        }
+        .btn-submit:hover {
+            background-color: var(--accent-blue-hover);
+        }
+        .error-banner {
+            background-color: var(--traffic-congested-bg);
+            border: 1px solid var(--traffic-congested-border);
+            color: var(--traffic-congested);
+            font-size: 13px;
+            padding: 10px 12px;
+            border-radius: var(--radius-sm);
+            margin-bottom: 16px;
+            display: none;
+        }
+        .demo-accounts {
+            margin-top: 24px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border-subtle);
+            font-size: 12px;
+            color: var(--text-muted);
+            line-height: 1.6;
+        }
+        .demo-accounts strong {
+            color: var(--text-secondary);
+        }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <div class="brand-header">
+            <div class="brand-icon">
+                <i data-lucide="shield-check" style="width:20px;height:20px;"></i>
+            </div>
+            <div class="brand-text">
+                <h1>TrafficVision Enterprise</h1>
+                <p>Hệ thống Giám sát & Dự báo Giao thông</p>
+            </div>
+        </div>
+
+        <div id="errorBanner" class="error-banner"></div>
+
+        <form id="loginForm" onsubmit="handleLogin(event)">
+            <div class="form-group">
+                <label for="username">Tên người dùng</label>
+                <input type="text" id="username" class="form-input" placeholder="admin hoặc viewer" required autofocus>
+            </div>
+            <div class="form-group">
+                <label for="password">Mật khẩu</label>
+                <input type="password" id="password" class="form-input" placeholder="••••••••" required>
+            </div>
+            <button type="submit" class="btn-submit" id="submitBtn">
+                <i data-lucide="log-in" style="width:16px;height:16px;"></i>
+                <span>Đăng nhập hệ thống</span>
+            </button>
+        </form>
+
+        <div class="demo-accounts">
+            <div><strong>Tài khoản Quản trị:</strong> admin / admin@123</div>
+            <div><strong>Tài khoản Giám sát:</strong> viewer / viewer@123</div>
+        </div>
+    </div>
+
+    <script>
+        if (window.lucide) {
+            lucide.createIcons();
+        }
+
+        async function handleLogin(e) {
+            e.preventDefault();
+            const btn = document.getElementById("submitBtn");
+            const errBanner = document.getElementById("errorBanner");
+            errBanner.style.display = "none";
+
+            const username = document.getElementById("username").value.trim();
+            const password = document.getElementById("password").value;
+
+            btn.disabled = true;
+            btn.innerHTML = `<span>Đang xác thực...</span>`;
+
+            try {
+                const res = await fetch("/api/auth/login", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ username, password })
+                });
+
+                const data = await res.json();
+                if (data.success) {
+                    window.location.href = "/";
+                } else {
+                    errBanner.textContent = data.message || "Tên người dùng hoặc mật khẩu không đúng.";
+                    errBanner.style.display = "block";
+                }
+            } catch (err) {
+                errBanner.textContent = "Không thể kết nối đến máy chủ. Vui lòng thử lại.";
+                errBanner.style.display = "block";
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = `<i data-lucide="log-in" style="width:16px;height:16px;"></i><span>Đăng nhập hệ thống</span>`;
+                if (window.lucide) lucide.createIcons();
+            }
+        }
+    </script>
+</body>
+</html>

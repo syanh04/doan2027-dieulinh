@@ -21,6 +21,10 @@ __pycache__/
 null
 final_check.txt
 
+# Môi trường ảo Python
+.venv/
+venv/
+
 # File tam thoi khi phat trien / tao video mau
 _scene_cache.txt
 _probe/
@@ -37,3 +41,5 @@ _*.jpeg
 .idea/
 Thumbs.db
 .DS_Store
+test_artifacts/
+*.db

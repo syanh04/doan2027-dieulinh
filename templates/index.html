@@ -1,286 +1,717 @@
 <!DOCTYPE html>
-<html lang="vi">
+<html lang="vi" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hệ Thống Giám Sát Giao Thông & Cảnh Báo Ùn Tắc AI</title>
-    <!-- Google Fonts & Icons -->
+    <title>TrafficVision Enterprise — Phân tích & Dự báo Lưu lượng Giao thông</title>
+    <!-- Fonts: Inter & JetBrains Mono -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link rel="stylesheet" href="/static/css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Local Chart.js & Lucide Icons (Offline 100%) -->
+    <script src="/static/js/chart.min.js"></script>
+    <script src="/static/js/lucide.min.js"></script>
+    <!-- CSS Design Tokens & Stylesheet -->
+    <link rel="stylesheet" href="/static/css/tokens.css?v=20261012_02">
+    <link rel="stylesheet" href="/static/css/style.css?v=20261012_02">
 </head>
-<body>
+<body class="app-body">
 
-    <!-- Header Navigation -->
+    <!-- 1. THIN TOP HEADER (48PX) - GRAFANA / DATADOG STYLE -->
     <header class="app-header">
-        <div class="header-brand">
-            <div class="brand-icon">
-                <i class="fa-solid fa-traffic-light"></i>
+        <div class="header-left">
+            <div class="brand">
+                <i data-lucide="shield-check" class="brand-logo-icon"></i>
+                <span class="brand-name">TrafficVision</span>
+                <span class="brand-tag">Enterprise ITS</span>
             </div>
-            <div class="brand-text">
-                <h1>TRAFFIC<span>VISION AI</span></h1>
-                <p>Hệ thống Nhận diện Phương tiện & Cảnh báo Ùn tắc Giao thông</p>
+            <div class="sys-telemetry-text">
+                <span class="status-dot online"></span>
+                <span id="gpuStatusText">GPU: NVIDIA RTX 3060</span>
+                <span class="dot-sep">·</span>
+                <span id="fpsStatusText">FPS: 29.4</span>
+                <span class="dot-sep">·</span>
+                <span id="latencyStatusText">Độ trễ: 22 ms</span>
             </div>
         </div>
-        
-        <div class="header-status">
-            <div class="status-badge" id="systemStatus">
-                <span class="pulse-dot green"></span>
-                <span>YOLO Engine Active</span>
+
+        <div class="header-right">
+            <div class="clock tabular-nums" id="liveClock">12:00:00 UTC+7</div>
+
+            <!-- Theme Switcher (Sáng / Tối) -->
+            <button class="btn btn-ghost" id="btnThemeToggle" title="Chuyển đổi giao diện Sáng / Tối">
+                <i data-lucide="moon" class="icon-sm" id="iconTheme"></i>
+                <span id="lblTheme">Tối</span>
+            </button>
+
+            <!-- Còi cảnh báo âm thanh -->
+            <button class="btn btn-ghost" id="btnSoundToggle" title="Còi cảnh báo âm thanh khi ùn tắc">
+                <i data-lucide="volume-2" class="icon-sm" id="iconSound"></i>
+                <span id="lblSound">Còi</span>
+            </button>
+
+            <!-- User Menu -->
+            <div class="user-menu-group">
+                <span class="user-badge" id="userRoleBadge">
+                    <i data-lucide="user" class="icon-xs"></i>
+                    <span id="userDisplayName">{{ user.username if user else 'admin' }} ({{ user.role if user else 'admin' }})</span>
+                </span>
+                <button class="btn btn-ghost" id="btnLogout" title="Đăng xuất khỏi hệ thống">
+                    <i data-lucide="log-out" class="icon-xs"></i>
+                    <span>Thoát</span>
+                </button>
             </div>
-            <div class="clock-box" id="liveClock">00:00:00</div>
         </div>
     </header>
 
-    <main class="dashboard-container">
-        
-        <!-- Congestion Alert Banner (Dynamic) -->
-        <div class="alert-banner-wrapper" id="alertBannerWrapper">
-            <div class="alert-banner status-none" id="alertBanner">
-                <div class="alert-icon" id="alertIcon">
-                    <i class="fa-solid fa-shield-halved"></i>
+    <!-- 2. MAIN APP CONTAINER (SIDEBAR HÀNG DỌC + CONTENT AREA) -->
+    <div class="app-main-container">
+
+        <!-- THANH ĐIỀU HƯỚNG DỌC (VERTICAL SIDEBAR) -->
+        <aside class="app-sidebar-nav">
+            <div class="sidebar-section-label">ĐIỀU HÀNH ITS</div>
+            <nav class="sidebar-menu">
+                <button class="nav-tab active" data-tab="overview" onclick="switchTab('overview')" title="Tổng quan hệ thống">
+                    <i data-lucide="layout-dashboard" class="icon-sm"></i>
+                    <span class="nav-tab-label">Tổng quan</span>
+                </button>
+                <button class="nav-tab" data-tab="live" onclick="switchTab('live')" title="Giám sát luồng trực tiếp">
+                    <i data-lucide="video" class="icon-sm"></i>
+                    <span class="nav-tab-label">Giám sát trực tiếp</span>
+                </button>
+                <button class="nav-tab" data-tab="analytics" onclick="switchTab('analytics')" title="Phân tích lưu lượng & mật độ">
+                    <i data-lucide="bar-chart-2" class="icon-sm"></i>
+                    <span class="nav-tab-label">Phân tích</span>
+                </button>
+                <button class="nav-tab" data-tab="forecast" onclick="switchTab('forecast')" title="Dự báo lưu lượng & Backtest">
+                    <i data-lucide="trending-up" class="icon-sm"></i>
+                    <span class="nav-tab-label">Dự báo</span>
+                </button>
+                <button class="nav-tab" data-tab="sources" onclick="switchTab('sources')" title="Quản lý nguồn camera & upload video">
+                    <i data-lucide="film" class="icon-sm"></i>
+                    <span class="nav-tab-label">Nguồn video</span>
+                </button>
+                <button class="nav-tab" data-tab="logs" onclick="switchTab('logs')" title="Nhật ký sự kiện & Viễn trắc">
+                    <i data-lucide="file-text" class="icon-sm"></i>
+                    <span class="nav-tab-label">Nhật ký</span>
+                </button>
+                <button class="nav-tab" data-tab="settings" onclick="switchTab('settings')" title="Cài đặt & Hiệu chuẩn ROI">
+                    <i data-lucide="settings" class="icon-sm"></i>
+                    <span class="nav-tab-label">Cài đặt</span>
+                </button>
+            </nav>
+
+            <div class="sidebar-footer-info">
+                <div class="sidebar-stat-row">
+                    <span class="sidebar-stat-label">Trực tuyến</span>
+                    <span class="status-pill-green" id="activeCamCountBadge">4/4 Cam</span>
                 </div>
-                <div class="alert-content">
-                    <div class="alert-title-group">
-                        <span class="alert-badge" id="alertBadge">SẴN SÀNG</span>
-                        <h2 id="alertTitle">Vui lòng tải ảnh lên hoặc chụp từ camera để kiểm thử</h2>
+                <div class="sidebar-version-tag">TrafficVision v2.5</div>
+            </div>
+        </aside>
+
+        <!-- 3. MAIN TAB CONTENT PANELS -->
+        <main class="tabs-viewport">
+
+            <!-- ======================================================== -->
+            <!-- TAB 1: TỔNG QUAN (NETWORK OVERVIEW)                     -->
+            <!-- ======================================================== -->
+            <section class="tab-panel active" id="tabPanel-overview">
+                <div class="overview-grid">
+                    
+                    <!-- KPI tổng thể toàn mạng lưới -->
+                    <div class="overview-kpi-banner">
+                        <div class="kpi-block">
+                            <span class="kpi-label">Lưu lượng bình quân (Q)</span>
+                            <div class="kpi-val-group">
+                                <span class="kpi-value tabular-nums" id="ovFlow">—</span>
+                                <span class="kpi-unit">xe/h</span>
+                            </div>
+                        </div>
+                        <div class="kpi-block">
+                            <span class="kpi-label">Mật độ bình quân (K)</span>
+                            <div class="kpi-val-group">
+                                <span class="kpi-value tabular-nums" id="ovDensity">—</span>
+                                <span class="kpi-unit">xe/km</span>
+                            </div>
+                        </div>
+                        <div class="kpi-block">
+                            <span class="kpi-label">Tổng xe trong ROI</span>
+                            <div class="kpi-val-group">
+                                <span class="kpi-value tabular-nums" id="ovTotalVeh">0</span>
+                                <span class="kpi-unit">xe</span>
+                            </div>
+                        </div>
+                        <div class="kpi-block">
+                            <span class="kpi-label">Trạng thái mạng lưới</span>
+                            <div class="kpi-val-group">
+                                <span class="signal-badge normal" id="ovNetworkStatus">Thông thoáng</span>
+                            </div>
+                        </div>
                     </div>
-                    <p id="alertDesc">Hệ thống sẽ tự động phân tích lưu lượng xe, nhận diện chủng loại và cảnh báo cấp độ ùn tắc.</p>
-                </div>
-                <div class="sound-toggle-box">
-                    <button class="btn-sound" id="btnSoundToggle" title="Bật/Tắt âm thanh cảnh báo">
-                        <i class="fa-solid fa-volume-high"></i> Âm thanh
-                    </button>
-                </div>
-            </div>
-        </div>
 
-        <!-- Controls Toolbar -->
-        <section class="toolbar-card">
-            <div class="toolbar-group">
-                <label><i class="fa-solid fa-sliders"></i> Chế độ xử lý:</label>
-                <div class="segmented-control">
-                    <button class="seg-btn active" data-mode="detection">
-                        <i class="fa-solid fa-boxes-stacked"></i> Phát hiện & Đếm xe
-                    </button>
-                    <button class="seg-btn" data-mode="classification">
-                        <i class="fa-solid fa-car-side"></i> Phân loại xe đơn (Custom AI)
-                    </button>
-                </div>
-            </div>
-
-            <div class="toolbar-group">
-                <label for="confSlider"><i class="fa-solid fa-bullseye"></i> Ngưỡng tin cậy (Confidence): <span id="confVal">15%</span></label>
-                <input type="range" id="confSlider" min="5" max="90" value="15" step="5">
-            </div>
-        </section>
-
-        <!-- Main Split Workarea -->
-        <div class="workarea-grid">
-            
-            <!-- Left Side: Input & Samples -->
-            <div class="panel-card input-panel">
-                <div class="panel-header">
-                    <h3><i class="fa-solid fa-cloud-arrow-up"></i> Nguồn hình ảnh thử nghiệm</h3>
-                    <div class="tab-buttons">
-                        <button class="tab-btn active" data-tab="upload"><i class="fa-solid fa-file-image"></i> Tải ảnh</button>
-                        <button class="tab-btn" data-tab="video"><i class="fa-solid fa-video"></i> Tải Video</button>
-                        <button class="tab-btn" data-tab="webcam"><i class="fa-solid fa-camera"></i> Live Camera</button>
+                    <!-- Thẻ trạng thái từng trạm Camera -->
+                    <div class="station-cards-container" id="overviewStationCards">
+                        <!-- Populated dynamically via JS -->
                     </div>
-                </div>
 
-                <!-- Tab 1: File Upload -->
-                <div class="tab-content active" id="tabUpload">
-                    <div class="dropzone" id="dropzone">
-                        <input type="file" id="fileInput" accept="image/*" class="file-input">
-                        <div class="dropzone-inner">
-                            <div class="drop-icon"><i class="fa-solid fa-image"></i></div>
-                            <h4>Kéo & Thả ảnh giao thông vào đây</h4>
-                            <p>Hoặc <span>Chọn tệp từ máy tính</span> (JPG, PNG, WEBP)</p>
+                    <!-- Biểu đồ tổng hợp 2 cột -->
+                    <div class="overview-charts-row">
+                        <div class="analytics-card">
+                            <div class="card-cap">
+                                <span class="card-title">Lưu lượng toàn mạng lưới theo thời gian</span>
+                            </div>
+                            <div class="chart-container-md">
+                                <canvas id="overviewFlowChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="analytics-card">
+                            <div class="card-cap">
+                                <span class="card-title">Cơ cấu phương tiện tổng hợp</span>
+                            </div>
+                            <div class="vehicle-mix-bars" id="ovVehicleMixBars">
+                                <div class="mix-item">
+                                    <div class="mix-header">
+                                        <span class="mix-label"><span class="color-dot dot-motorcycle"></span>Xe máy</span>
+                                        <span class="mix-val tabular-nums" id="ovPctMotorcycle">—</span>
+                                    </div>
+                                    <div class="mix-bar-bg"><div class="mix-bar-fill bar-motorcycle" id="ovBarMotorcycle" style="width: 0%;"></div></div>
+                                </div>
+                                <div class="mix-item">
+                                    <div class="mix-header">
+                                        <span class="mix-label"><span class="color-dot dot-car"></span>Ô tô con</span>
+                                        <span class="mix-val tabular-nums" id="ovPctCar">—</span>
+                                    </div>
+                                    <div class="mix-bar-bg"><div class="mix-bar-fill bar-car" id="ovBarCar" style="width: 0%;"></div></div>
+                                </div>
+                                <div class="mix-item">
+                                    <div class="mix-header">
+                                        <span class="mix-label"><span class="color-dot dot-bus"></span>Xe khách</span>
+                                        <span class="mix-val tabular-nums" id="ovPctBus">—</span>
+                                    </div>
+                                    <div class="mix-bar-bg"><div class="mix-bar-fill bar-bus" id="ovBarBus" style="width: 0%;"></div></div>
+                                </div>
+                                <div class="mix-item">
+                                    <div class="mix-header">
+                                        <span class="mix-label"><span class="color-dot dot-truck"></span>Xe tải</span>
+                                        <span class="mix-val tabular-nums" id="ovPctTruck">—</span>
+                                    </div>
+                                    <div class="mix-bar-bg"><div class="mix-bar-fill bar-truck" id="ovBarTruck" style="width: 0%;"></div></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+
+            <!-- ======================================================== -->
+            <!-- TAB 2: GIÁM SÁT TRỰC TIẾP (LIVE MONITORING - 3 COLUMNS)  -->
+            <!-- ======================================================== -->
+            <section class="tab-panel" id="tabPanel-live">
+                <div class="live-workspace-layout">
+
+                    <!-- Cột trái (240px): Danh sách camera & Filter -->
+                    <aside class="col-left">
+                        <div class="col-header">
+                            <span class="col-title">Danh sách camera</span>
+                        </div>
+                        <div class="search-box">
+                            <i data-lucide="search" class="icon-xs search-icon"></i>
+                            <input type="text" id="cameraSearchInput" placeholder="Tìm camera..." class="input-search">
+                        </div>
+                        <div class="camera-list" id="cameraItemList">
+                            <!-- Populated by JS -->
+                        </div>
+
+                        <div class="collapsible-section">
+                            <button class="collapsible-trigger" id="btnToggleTuning">
+                                <span class="trigger-label">
+                                    <i data-lucide="cpu" class="icon-xs"></i>
+                                    <span>Tham số YOLO</span>
+                                </span>
+                                <i data-lucide="chevron-down" class="icon-xs" id="tuningChevron"></i>
+                            </button>
+                            <div class="collapsible-body" id="tuningBody" style="display: none;">
+                                <div class="control-row">
+                                    <div class="control-label-row">
+                                        <span>Ngưỡng nhận diện:</span>
+                                        <span class="tabular-nums" id="lblConfidence">20%</span>
+                                    </div>
+                                    <input type="range" id="sliderConfidence" min="5" max="80" value="20" step="5" class="slider">
+                                </div>
+                            </div>
+                        </div>
+                    </aside>
+
+                    <!-- Cột giữa: Lưới Camera / Chế độ Focus -->
+                    <section class="col-center">
+                        <div class="grid-toolbar">
+                            <div class="toolbar-left">
+                                <span class="section-title" id="gridTitle">Lưới camera trực tiếp</span>
+                                <button class="btn btn-sm btn-outline" id="btnExitFocus" style="display: none;">
+                                    <i data-lucide="arrow-left" class="icon-xs"></i>
+                                    <span>Quay lại lưới đa camera</span>
+                                </button>
+                            </div>
+                            <div class="toolbar-right">
+                                <div class="layout-btn-group" id="layoutBtnGroup">
+                                    <button class="btn-layout" data-layout="1x1">1×1</button>
+                                    <button class="btn-layout active" data-layout="2x2">2×2</button>
+                                    <button class="btn-layout" data-layout="3x3">3×3</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Lưới camera -->
+                        <div class="camera-grid-stage layout-2x2" id="cameraGridStage">
+                            <!-- Populated dynamically -->
+                        </div>
+
+                        <!-- Focus stage -->
+                        <div class="camera-focus-stage" id="cameraFocusStage" style="display: none;">
+                            <div class="focus-viewport">
+                                <img id="focusStreamImg" class="focus-stream-img" alt="Focus Camera">
+                                <canvas id="focusRoiCanvas" class="focus-roi-canvas"></canvas>
+                                <div class="focus-hud-overlay">
+                                    <div class="hud-tag top-left">
+                                        <span class="hud-main" id="focusCamName">HN-CCTV-01</span>
+                                        <span class="hud-sub" id="focusCamBearing">HƯỚNG ĐÔNG</span>
+                                    </div>
+                                    <div class="hud-tag top-right">
+                                        <span class="live-indicator">LIVE</span>
+                                        <span class="hud-sub" id="focusCamFps">29.4 FPS</span>
+                                    </div>
+                                </div>
+                                <div class="focus-hover-actions">
+                                    <button class="btn-action" id="btnFocusPause" title="Tạm dừng"><i data-lucide="pause" class="icon-sm"></i></button>
+                                    <button class="btn-action" id="btnFocusSnapshot" title="Chụp ảnh"><i data-lucide="camera" class="icon-sm"></i></button>
+                                    <button class="btn-action" id="btnFocusEditRoi" title="Chỉnh ROI"><i data-lucide="edit-3" class="icon-sm"></i> <span id="lblEditRoiState">Chỉnh ROI</span></button>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- Cột phải (320px): KPI & Khuyến nghị điều tiết -->
+                    <aside class="col-right">
+                        <div class="kpi-card-row">
+                            <div class="kpi-cell">
+                                <span class="kpi-label">Lưu lượng (Q)</span>
+                                <div class="kpi-val-group">
+                                    <span class="kpi-value tabular-nums" id="kpiFlow">—</span>
+                                    <span class="kpi-unit">xe/h</span>
+                                </div>
+                            </div>
+                            <div class="kpi-cell">
+                                <span class="kpi-label">Mật độ (K)</span>
+                                <div class="kpi-val-group">
+                                    <span class="kpi-value tabular-nums" id="kpiDensity">—</span>
+                                    <span class="kpi-unit">xe/km</span>
+                                </div>
+                            </div>
+                            <div class="kpi-cell">
+                                <span class="kpi-label">PCU</span>
+                                <div class="kpi-val-group">
+                                    <span class="kpi-value tabular-nums" id="kpiPcu">0.0</span>
+                                </div>
+                            </div>
+                            <div class="kpi-cell">
+                                <span class="kpi-label">Tốc độ (V)</span>
+                                <div class="kpi-val-group">
+                                    <span class="kpi-value tabular-nums" id="kpiSpeed">—</span>
+                                    <span class="kpi-unit">km/h</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="analytics-card">
+                            <div class="card-cap">
+                                <span class="card-title">Cơ cấu phương tiện</span>
+                            </div>
+                            <div class="vehicle-mix-bars" id="vehicleMixBars">
+                                <div class="mix-item">
+                                    <div class="mix-header">
+                                        <span class="mix-label"><span class="color-dot dot-motorcycle"></span>Xe máy</span>
+                                        <span class="mix-val tabular-nums" id="pctMotorcycle">—</span>
+                                    </div>
+                                    <div class="mix-bar-bg"><div class="mix-bar-fill bar-motorcycle" id="barMotorcycle" style="width: 0%;"></div></div>
+                                </div>
+                                <div class="mix-item">
+                                    <div class="mix-header">
+                                        <span class="mix-label"><span class="color-dot dot-car"></span>Ô tô con</span>
+                                        <span class="mix-val tabular-nums" id="pctCar">—</span>
+                                    </div>
+                                    <div class="mix-bar-bg"><div class="mix-bar-fill bar-car" id="barCar" style="width: 0%;"></div></div>
+                                </div>
+                                <div class="mix-item">
+                                    <div class="mix-header">
+                                        <span class="mix-label"><span class="color-dot dot-bus"></span>Xe khách</span>
+                                        <span class="mix-val tabular-nums" id="pctBus">—</span>
+                                    </div>
+                                    <div class="mix-bar-bg"><div class="mix-bar-fill bar-bus" id="barBus" style="width: 0%;"></div></div>
+                                </div>
+                                <div class="mix-item">
+                                    <div class="mix-header">
+                                        <span class="mix-label"><span class="color-dot dot-truck"></span>Xe tải</span>
+                                        <span class="mix-val tabular-nums" id="pctTruck">—</span>
+                                    </div>
+                                    <div class="mix-bar-bg"><div class="mix-bar-fill bar-truck" id="barTruck" style="width: 0%;"></div></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="signal-card" id="signalCard">
+                            <div class="signal-header">
+                                <span class="signal-badge normal" id="signalStatusBadge">Thông thoáng</span>
+                                <span class="signal-timer tabular-nums" id="signalTimer">Chu kỳ chuẩn 90s</span>
+                            </div>
+                            <p class="signal-advice" id="signalAdviceText">Lưu lượng ổn định dưới ngưỡng. Duy trì pha xanh trục chính 45s.</p>
+                        </div>
+                    </aside>
+
+                </div>
+            </section>
+
+            <!-- ======================================================== -->
+            <!-- TAB 3: PHÂN TÍCH (ANALYTICS & BIỂU ĐỒ CHUYÊN SÂU)         -->
+            <!-- ======================================================== -->
+            <section class="tab-panel" id="tabPanel-analytics">
+                <div class="analytics-tab-layout">
+                    <div class="toolbar-row">
+                        <div class="toolbar-left">
+                            <span class="section-title">Phân tích chuỗi thời gian & Tương quan giao thông</span>
+                        </div>
+                        <div class="toolbar-right">
+                            <select id="analyticsCameraSelect" class="select-sm">
+                                <option value="ALL">Toàn mạng lưới</option>
+                                <option value="CAM-01">CAM-01 · Kim Mã - Liễu Giai</option>
+                                <option value="CAM-02">CAM-02 · Hàng Bài - Tràng Tiền</option>
+                                <option value="CAM-03">CAM-03 · Cầu Nhật Tân</option>
+                                <option value="CAM-04">CAM-04 · Giải Phóng - Trường Chinh</option>
+                            </select>
+                            <div class="time-range-pills">
+                                <button class="pill-range" data-range="1m">1p</button>
+                                <button class="pill-range active" data-range="5m">5p</button>
+                                <button class="pill-range" data-range="15m">15p</button>
+                                <button class="pill-range" data-range="60m">60p</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="charts-2col-grid">
+                        <div class="analytics-card">
+                            <div class="card-cap">
+                                <span class="card-title">Lưu lượng theo thời gian (Q)</span>
+                            </div>
+                            <div class="chart-container-md">
+                                <canvas id="flowHistoryChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="analytics-card">
+                            <div class="card-cap">
+                                <span class="card-title">Mật độ (K) & PCU theo thời gian</span>
+                            </div>
+                            <div class="chart-container-md">
+                                <canvas id="densityPcuChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Hàng biểu đồ đề xuất bổ sung: Tốc độ V & Phân bố cơ cấu xe -->
+                    <div class="charts-2col-grid" style="margin-top: 16px;">
+                        <div class="analytics-card">
+                            <div class="card-cap">
+                                <span class="card-title">Vận tốc dòng xe trung bình (V - km/h)</span>
+                            </div>
+                            <div class="chart-container-md">
+                                <canvas id="speedHistoryChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="analytics-card">
+                            <div class="card-cap">
+                                <span class="card-title">Cơ cấu phương tiện chi tiết (Phân phối %)</span>
+                            </div>
+                            <div class="chart-container-md" style="display: flex; align-items: center; justify-content: center;">
+                                <canvas id="analyticsVehicleMixChart"></canvas>
+                            </div>
                         </div>
                     </div>
                 </div>
+            </section>
 
-                <!-- Tab 2: Video Upload & Testing -->
-                <div class="tab-content" id="tabVideo">
-                    <div class="dropzone" id="videoDropzone">
-                        <input type="file" id="videoFileInput" accept="video/*" class="file-input">
-                        <div class="dropzone-inner">
-                            <div class="drop-icon" style="color: #4facfe;"><i class="fa-solid fa-file-video"></i></div>
-                            <h4>Kéo & Thả file Video giao thông vào đây</h4>
-                            <p>Hoặc <span>Chọn Video từ máy tính</span> (MP4, AVI, MOV)</p>
+            <!-- ======================================================== -->
+            <!-- TAB 4: DỰ BÁO LƯU LƯỢNG (TRAFFIC FORECASTING & BACKTEST)  -->
+            <!-- ======================================================== -->
+            <section class="tab-panel" id="tabPanel-forecast">
+                <div class="forecast-tab-layout">
+                    <div class="toolbar-row">
+                        <div class="toolbar-left">
+                            <span class="section-title">Dự báo lưu lượng & Đánh giá sai số Backtest</span>
+                        </div>
+                        <div class="toolbar-right">
+                            <select id="forecastCamSelect" class="select-sm">
+                                <option value="ALL">Toàn mạng lưới</option>
+                                <option value="CAM-01">CAM-01 · Kim Mã - Liễu Giai</option>
+                                <option value="CAM-02">CAM-02 · Hàng Bài - Tràng Tiền</option>
+                                <option value="CAM-03">CAM-03 · Cầu Nhật Tân</option>
+                                <option value="CAM-04">CAM-04 · Giải Phóng - Trường Chinh</option>
+                            </select>
+                            <select id="forecastModelSelect" class="select-sm">
+                                <option value="holt_winters">Holt's Damped Trend (95% CI)</option>
+                                <option value="moving_average">Trung bình động (Moving Average)</option>
+                            </select>
+                            <div class="time-range-pills">
+                                <button class="pill-forecast active" data-horizon="15">15 phút</button>
+                                <button class="pill-forecast" data-horizon="30">30 phút</button>
+                                <button class="pill-forecast" data-horizon="60">60 phút</button>
+                            </div>
                         </div>
                     </div>
-                    <div class="sample-video-box" style="margin-top: 12px;">
-                        <button class="btn btn-primary" id="btnPlaySampleVideo" style="width: 100%;">
-                            <i class="fa-solid fa-play"></i> Thử nghiệm Video Giao Thông Mẫu
+
+                    <!-- Thẻ chỉ số sai số Backtest thực tế -->
+                    <div class="backtest-cards-row">
+                        <div class="backtest-cell">
+                            <span class="kpi-label">Sai số tuyệt đối (MAE)</span>
+                            <div class="kpi-val-group">
+                                <span class="kpi-value tabular-nums" id="valMae">—</span>
+                                <span class="kpi-unit">xe/h</span>
+                            </div>
+                        </div>
+                        <div class="backtest-cell">
+                            <span class="kpi-label">Căn bậc 2 sai số (RMSE)</span>
+                            <div class="kpi-val-group">
+                                <span class="kpi-value tabular-nums" id="valRmse">—</span>
+                                <span class="kpi-unit">xe/h</span>
+                            </div>
+                        </div>
+                        <div class="backtest-cell">
+                            <span class="kpi-label">Sai số phần trăm (MAPE)</span>
+                            <div class="kpi-val-group">
+                                <span class="kpi-value tabular-nums" id="valMape">—</span>
+                                <span class="kpi-unit">%</span>
+                            </div>
+                        </div>
+                        <div class="backtest-cell">
+                            <span class="kpi-label">Số mẫu quan sát thực tế</span>
+                            <div class="kpi-val-group">
+                                <span class="kpi-value tabular-nums" id="valSampleCount">0</span>
+                                <span class="kpi-unit">mẫu</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="analytics-card" style="margin-top: 16px;">
+                        <div class="card-cap">
+                            <span class="card-title">Đường dự báo tương lai & Vùng tin cậy 95%</span>
+                        </div>
+                        <div class="chart-container-lg">
+                            <canvas id="flowForecastChart"></canvas>
+                        </div>
+                        <div class="forecast-meta-note" id="forecastMetaNote">
+                            Đang thu thập dữ liệu quan sát từ video camera.
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ======================================================== -->
+            <!-- TAB 5: NGUỒN VIDEO (VIDEO SOURCE MANAGEMENT & UPLOAD)   -->
+            <!-- ======================================================== -->
+            <section class="tab-panel" id="tabPanel-sources">
+                <div class="sources-tab-layout">
+                    <div class="sources-header-row">
+                        <span class="section-title">Quản lý nguồn video cho từng trạm camera</span>
+                        <button class="btn btn-primary" id="btnTriggerUploadModal">
+                            <i data-lucide="upload" class="icon-xs"></i>
+                            <span>Tải lên video mới cho camera</span>
                         </button>
                     </div>
-                </div>
 
-                <!-- Tab 3: Webcam Camera -->
-                <div class="tab-content" id="tabWebcam">
-                    <div class="webcam-container">
-                        <video id="webcamVideo" autoplay playsinline muted></video>
-                        <canvas id="webcamCanvas" style="display: none;"></canvas>
-                        <div class="webcam-overlay" id="webcamOverlay">
-                            <p>Nhấp bên dưới để khởi động Camera</p>
+                    <div class="video-cards-grid" id="sourcesCameraGrid">
+                        <!-- Populated dynamically via JS -->
+                    </div>
+
+                    <div class="sources-table-section">
+                        <span class="section-subtitle">Kho video mẫu & Tệp đã tải lên</span>
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Tên tệp</th>
+                                    <th>Gán cho camera</th>
+                                    <th>Thời lượng</th>
+                                    <th>Độ phân giải</th>
+                                    <th>FPS</th>
+                                    <th>Kích thước</th>
+                                    <th>Người tải</th>
+                                    <th>Hành động</th>
+                                </tr>
+                            </thead>
+                            <tbody id="uploadedVideosTableBody">
+                                <!-- Populated via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ======================================================== -->
+            <!-- TAB 6: NHẬT KÝ & AUDIT LOGS (TOÀN MÀN HÌNH CHUẨN)       -->
+            <!-- ======================================================== -->
+            <section class="tab-panel" id="tabPanel-logs">
+                <div class="logs-tab-layout">
+                    <div class="logs-filter-toolbar">
+                        <div class="filter-group">
+                            <select id="logFilterCam" class="select-sm">
+                                <option value="ALL">Tất cả camera</option>
+                                <option value="CAM-01">CAM-01</option>
+                                <option value="CAM-02">CAM-02</option>
+                                <option value="CAM-03">CAM-03</option>
+                                <option value="CAM-04">CAM-04</option>
+                            </select>
+                            <select id="logFilterLevel" class="select-sm">
+                                <option value="ALL">Tất cả mức độ</option>
+                                <option value="1">Thông thoáng</option>
+                                <option value="2">Đông đúc</option>
+                                <option value="3">Ùn tắc</option>
+                                <option value="4">Nghiêm trọng</option>
+                            </select>
+                            <input type="text" id="logSearchInput" placeholder="Tìm kiếm nhật ký..." class="input-search-sm">
                         </div>
-                    </div>
-                    <div class="webcam-actions">
-                        <button class="btn btn-primary" id="btnStartCam"><i class="fa-solid fa-power-off"></i> Mở Camera</button>
-                        <button class="btn btn-accent" id="btnCaptureCam" disabled><i class="fa-solid fa-camera-retro"></i> Chụp & Phân tích</button>
-                    </div>
-                </div>
-
-                <!-- Preset Samples Section -->
-                <div class="samples-section">
-                    <h4><i class="fa-solid fa-bolt"></i> Dùng thử nhanh 1-Click mẫu ảnh thực tế:</h4>
-                    <div class="samples-grid" id="samplesGrid">
-                        <div class="sample-skeleton">Đang tải danh sách mẫu...</div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Right Side: Analytics & Detection Display -->
-            <div class="panel-card display-panel">
-                <div class="panel-header">
-                    <h3><i class="fa-solid fa-eye"></i> Kết quả nhận diện & Phân tích</h3>
-                    <div class="meta-tag" id="processTimeTag"><i class="fa-solid fa-bolt-lightning"></i> -- ms</div>
-                </div>
-
-                <div class="image-viewport">
-                    <div class="loading-overlay" id="loadingOverlay">
-                        <div class="spinner"></div>
-                        <p>Đang phân tích qua mô hình YOLO AI...</p>
-                    </div>
-
-                    <div class="placeholder-view" id="placeholderView">
-                        <i class="fa-solid fa-chart-line"></i>
-                        <p>Hình ảnh/Video và phân tích bounding box sẽ hiển thị tại đây</p>
-                    </div>
-
-                    <img id="resultImage" class="result-image" style="display: none;" alt="Kết quả nhận diện">
-                    <img id="videoStream" class="result-image" style="display: none;" alt="Luồng Video nhận diện realtime">
-                </div>
-
-                <!-- Stat Cards Grid -->
-                <div class="stats-cards-grid">
-                    <div class="stat-card primary">
-                        <div class="stat-icon"><i class="fa-solid fa-car"></i></div>
-                        <div class="stat-info">
-                            <span class="stat-label">Tổng số phương tiện</span>
-                            <span class="stat-value" id="valTotalVehicles">0</span>
-                        </div>
-                    </div>
-
-                    <div class="stat-card accent">
-                        <div class="stat-icon"><i class="fa-solid fa-gauge-high"></i></div>
-                        <div class="stat-info">
-                            <span class="stat-label">Chỉ số PCU Lưu lượng</span>
-                            <span class="stat-value" id="valPcuScore">0.0</span>
-                        </div>
-                    </div>
-
-                    <div class="stat-card mini">
-                        <div class="stat-icon-mini xe-may"><i class="fa-solid fa-motorcycle"></i></div>
-                        <div>
-                            <span class="mini-label">Xe máy</span>
-                            <span class="mini-val" id="cntXeMay">0</span>
+                        <div class="logs-actions">
+                            <span class="badge-subtle" id="logTotalCount">0 bản ghi</span>
+                            <a href="/api/logs/export" class="btn btn-sm btn-outline" id="btnExportCsvLogs">
+                                <i data-lucide="download" class="icon-xs"></i>
+                                <span>Xuất CSV (Excel)</span>
+                            </a>
+                            <button class="btn btn-sm btn-outline danger" id="btnClearLogs">
+                                <i data-lucide="trash-2" class="icon-xs"></i>
+                                <span>Xóa nhật ký</span>
+                            </button>
                         </div>
                     </div>
 
-                    <div class="stat-card mini">
-                        <div class="stat-icon-mini o-to"><i class="fa-solid fa-car-side"></i></div>
-                        <div>
-                            <span class="mini-label">Ô tô con</span>
-                            <span class="mini-val" id="cntOTo">0</span>
-                        </div>
+                    <div class="table-scroll-wrapper">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 130px;">Thời gian</th>
+                                    <th style="width: 100px;">Trạm camera</th>
+                                    <th style="width: 90px;">Lưu lượng Q</th>
+                                    <th style="width: 90px;">Mật độ K</th>
+                                    <th style="width: 70px;">PCU</th>
+                                    <th style="width: 90px;">Tốc độ V</th>
+                                    <th style="width: 120px;">Trạng thái</th>
+                                    <th>Khuyến nghị điều tiết</th>
+                                    <th>Chi tiết sự kiện</th>
+                                </tr>
+                            </thead>
+                            <tbody id="logsTableBody">
+                                <tr class="empty-state-row">
+                                    <td colspan="9">Đang tải nhật ký từ cơ sở dữ liệu...</td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
+                </div>
+            </section>
 
-                    <div class="stat-card mini">
-                        <div class="stat-icon-mini xe-khach"><i class="fa-solid fa-bus"></i></div>
-                        <div>
-                            <span class="mini-label">Xe khách</span>
-                            <span class="mini-val" id="cntXeKhach">0</span>
+            <!-- ======================================================== -->
+            <!-- TAB 7: CÀI ĐẶT & HIỆU CHUẨN ROI (SETTINGS)               -->
+            <!-- ======================================================== -->
+            <section class="tab-panel" id="tabPanel-settings">
+                <div class="settings-tab-layout">
+                    <div class="settings-card-wide">
+                        <span class="section-title">Cấu hình tham số kỹ thuật hệ thống</span>
+                        <p class="settings-desc">Điều chỉnh các thông số hiệu chuẩn vật lý thực tế của đoạn đường camera giám sát.</p>
+
+                        <div class="settings-form-grid">
+                            <div class="form-group">
+                                <label class="form-label">Chiều dài đoạn đường ROI ($L$ mét):</label>
+                                <input type="number" id="inputRoiLength" class="form-input" value="60.0" min="10" max="300">
+                                <span class="form-help">Chiều dài theo hướng xe chạy dùng để tính mật độ K (xe/km).</span>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Chiều rộng mặt đường ROI ($W$ mét):</label>
+                                <input type="number" id="inputRoiWidth" class="form-input" value="12.0" min="3" max="50">
+                                <span class="form-help">Bề rộng lòng đường trong phạm vi camera bao quát.</span>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Ngưỡng mật độ xe/km (Đông đúc, Ùn tắc, Nghiêm trọng):</label>
+                                <div class="input-grid-3">
+                                    <input type="number" id="inputThrL2" class="form-input" value="120" title="Mức 2: Đông đúc">
+                                    <input type="number" id="inputThrL3" class="form-input" value="220" title="Mức 3: Ùn tắc">
+                                    <input type="number" id="inputThrL4" class="form-input" value="350" title="Mức 4: Nghiêm trọng">
+                                </div>
+                            </div>
                         </div>
-                    </div>
 
-                    <div class="stat-card mini">
-                        <div class="stat-icon-mini xe-tai"><i class="fa-solid fa-truck"></i></div>
-                        <div>
-                            <span class="mini-label">Xe tải</span>
-                            <span class="mini-val" id="cntXeTai">0</span>
-                        </div>
-                    </div>
-
-                    <div class="stat-card density">
-                        <div class="stat-icon"><i class="fa-solid fa-grip-lines"></i></div>
-                        <div class="stat-info">
-                            <span class="stat-label">Mật độ (trong ROI)</span>
-                            <span class="stat-value" id="valDensity">0 <small>xe/km</small></span>
-                        </div>
-                    </div>
-
-                    <div class="stat-card flow">
-                        <div class="stat-icon"><i class="fa-solid fa-arrow-trend-up"></i></div>
-                        <div class="stat-info">
-                            <span class="stat-label">Lưu lượng (xe/giờ)</span>
-                            <span class="stat-value" id="valFlow">&mdash;</span>
+                        <div class="settings-actions-footer">
+                            <button class="btn btn-primary" id="btnSaveSystemSettings">
+                                <i data-lucide="check" class="icon-xs"></i>
+                                <span>Lưu và áp dụng cấu hình ngay</span>
+                            </button>
                         </div>
                     </div>
                 </div>
+            </section>
 
-            </div>
+        </main>
+    </div>
 
-        </div>
-
-        <!-- Charts & Log Section -->
-        <div class="analytics-row">
-            <div class="panel-card chart-card">
-                <div class="panel-header">
-                    <h3><i class="fa-solid fa-chart-pie"></i> Tỉ lệ phân bố phương tiện</h3>
-                </div>
-                <div class="chart-container">
-                    <canvas id="vehicleChart"></canvas>
-                </div>
-            </div>
-
-            <div class="panel-card history-card">
-                <div class="panel-header">
-                    <h3><i class="fa-solid fa-clock-rotate-left"></i> Nhật ký kiểm thử thời gian thực</h3>
-                    <button class="btn-sm" id="btnClearHistory"><i class="fa-solid fa-trash-can"></i> Xóa lịch sử</button>
-                </div>
-                <div class="table-responsive">
-                    <table class="history-table">
-                        <thead>
-                            <tr>
-                                <th>Thời gian</th>
-                                <th>Tổng phương tiện</th>
-                                <th>Chi tiết loại xe</th>
-                                <th>Mức độ ùn tắc</th>
-                                <th>Xử lý</th>
-                            </tr>
-                        </thead>
-                        <tbody id="historyTableBody">
-                            <tr class="empty-row">
-                                <td colspan="5">Chưa có nhật ký kiểm thử. Hãy tải ảnh lên để bắt đầu.</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
+    <!-- 4. PERSISTENT MINI FOOTER LOG (3 BẢN GHI MỚI NHẤT MỌI TAB) -->
+    <footer class="app-mini-footer">
+        <div class="footer-left">
+            <i data-lucide="activity" class="icon-xs"></i>
+            <span class="footer-title">Nhật ký sự kiện gần nhất:</span>
+            <div class="mini-log-ticker" id="miniLogTicker">
+                <span class="ticker-item">Hệ thống đang hoạt động ổn định. Đang giám sát 4 trạm camera.</span>
             </div>
         </div>
+        <div class="footer-right">
+            <span class="footer-link" id="btnJumpToLogsTab">Xem toàn bộ nhật ký &rarr;</span>
+        </div>
+    </footer>
 
-    </main>
+    <!-- MODAL: UPLOAD VIDEO PER CAMERA -->
+    <div class="modal-backdrop" id="uploadModal" style="display: none;">
+        <div class="modal-card">
+            <div class="modal-header">
+                <span class="modal-title">Tải lên video cho trạm Camera</span>
+                <button class="btn-close" id="btnCloseUploadModal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Chọn Camera tiếp nhận:</label>
+                    <select id="modalUploadCamSelect" class="form-input">
+                        <option value="CAM-01">CAM-01 · Kim Mã - Liễu Giai</option>
+                        <option value="CAM-02">CAM-02 · Hàng Bài - Tràng Tiền</option>
+                        <option value="CAM-03">CAM-03 · Cầu Nhật Tân</option>
+                        <option value="CAM-04">CAM-04 · Giải Phóng - Trường Chinh</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Chọn tệp video MP4 từ máy tính:</label>
+                    <input type="file" id="modalVideoFileInput" accept="video/mp4,video/avi,video/mov,video/mkv" class="form-input">
+                    <span class="form-help">Hệ thống sẽ kiểm tra kích thước, FPS, số frame và tự động tạo phiên phân tích mới độc lập.</span>
+                </div>
+                <div id="uploadProgressContainer" style="display: none; margin-top: 12px;">
+                    <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;" id="uploadStatusText">Đang tải lên...</div>
+                    <div style="background: var(--bg-canvas); height: 6px; border-radius: 3px; overflow: hidden;">
+                        <div id="uploadProgressBar" style="width: 0%; height: 100%; background: var(--accent-blue); transition: width 0.2s;"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline" id="btnCancelUploadModal">Hủy</button>
+                <button class="btn btn-primary" id="btnConfirmUpload">Bắt đầu xử lý</button>
+            </div>
+        </div>
+    </div>
 
-    <!-- Audio Element for Congestion Alert -->
+    <!-- AUDIO ALARM FOR CONGESTION -->
     <audio id="alarmAudio" preload="auto" src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3"></audio>
 
-    <script src="/static/js/main.js"></script>
+    <!-- MAIN CLIENT LOGIC -->
+    <script src="/static/js/main.js?v=20261012_02"></script>
 </body>
 </html>

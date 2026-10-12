@@ -1,0 +1,110 @@
+/* ==========================================================================
+   TRAFFICVISION ENTERPRISE - DESIGN TOKENS
+   Style: Professional Enterprise SaaS (Grafana / Datadog aesthetic)
+   Supports Light & Dark Modes via [data-theme]
+   ========================================================================== */
+
+:root, [data-theme="dark"] {
+    /* 1. Neutral Charcoal Palette (Dark Default) */
+    --bg-canvas: #0f1115;          /* Nền chính sâu */
+    --bg-header: #14171d;          /* Thanh header trên cùng */
+    --bg-panel: #161a21;           /* Nền bảng / cột */
+    --bg-card: #1d222b;            /* Nền thẻ nội dung */
+    --bg-hover: #262c37;           /* Trạng thái hover */
+    --bg-active: #2f3643;          /* Trạng thái chọn */
+    --bg-subtle: #12151b;          /* Nền thụt lề / rãnh */
+
+    /* 2. Precision 1px Borders */
+    --border-subtle: #202632;
+    --border-default: #2a303c;
+    --border-hover: #3c4454;
+    --border-focus: #3b82f6;
+
+    /* 3. Typography & Numerics */
+    --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-mono: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
+
+    /* 4. Text Hierarchy */
+    --text-primary: #f1f5f9;       /* Chữ chính sáng rõ */
+    --text-secondary: #94a3b8;     /* Nhãn phụ, mô tả */
+    --text-muted: #64748b;         /* Chú thích nhỏ, watermark */
+    --text-disabled: #475569;
+
+    /* 5. Brand Accent (Duy nhất 1 màu nhấn xanh dương chuyên nghiệp) */
+    --accent-blue: #3b82f6;
+    --accent-blue-hover: #2563eb;
+    --accent-blue-subtle: rgba(59, 130, 246, 0.12);
+
+    /* 6. Semantic Traffic Status Colors (Chỉ dùng cho trạng thái) */
+    --traffic-normal: #10b981;       /* Thông thoáng: Xanh lá */
+    --traffic-normal-bg: rgba(16, 185, 129, 0.12);
+    --traffic-normal-border: rgba(16, 185, 129, 0.3);
+
+    --traffic-moderate: #f59e0b;     /* Đông đúc: Vàng cam */
+    --traffic-moderate-bg: rgba(245, 158, 11, 0.12);
+    --traffic-moderate-border: rgba(245, 158, 11, 0.3);
+
+    --traffic-congested: #ef4444;    /* Ùn tắc / Kẹt: Đỏ */
+    --traffic-congested-bg: rgba(239, 68, 68, 0.14);
+    --traffic-congested-border: rgba(239, 68, 68, 0.35);
+
+    /* 7. Metric Vehicle Breakdown Colors */
+    --veh-motorcycle: #06b6d4;
+    --veh-car: #3b82f6;
+    --veh-bus: #8b5cf6;
+    --veh-truck: #f97316;
+
+    /* 8. Spacing & Radius (8px Grid & Uniform 6px Radius) */
+    --radius: 6px;
+    --radius-sm: 4px;
+    --radius-pill: 9999px;
+
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 20px;
+    --space-6: 24px;
+}
+
+[data-theme="light"] {
+    /* Light Mode Tokens (Datadog Light / Clean Engineering Canvas) */
+    --bg-canvas: #f8fafc;
+    --bg-header: #ffffff;
+    --bg-panel: #ffffff;
+    --bg-card: #f1f5f9;
+    --bg-hover: #e2e8f0;
+    --bg-active: #cbd5e1;
+    --bg-subtle: #f8fafc;
+
+    --border-subtle: #e2e8f0;
+    --border-default: #cbd5e1;
+    --border-hover: #94a3b8;
+    --border-focus: #2563eb;
+
+    --text-primary: #0f172a;
+    --text-secondary: #475569;
+    --text-muted: #64748b;
+    --text-disabled: #94a3b8;
+
+    --accent-blue: #2563eb;
+    --accent-blue-hover: #1d4ed8;
+    --accent-blue-subtle: rgba(37, 99, 235, 0.08);
+
+    --traffic-normal: #059669;
+    --traffic-normal-bg: rgba(5, 150, 105, 0.12);
+    --traffic-normal-border: rgba(5, 150, 105, 0.3);
+
+    --traffic-moderate: #d97706;
+    --traffic-moderate-bg: rgba(217, 119, 6, 0.12);
+    --traffic-moderate-border: rgba(217, 119, 6, 0.3);
+
+    --traffic-congested: #dc2626;
+    --traffic-congested-bg: rgba(220, 38, 38, 0.12);
+    --traffic-congested-border: rgba(220, 38, 38, 0.3);
+
+    --veh-motorcycle: #0891b2;
+    --veh-car: #2563eb;
+    --veh-bus: #7c3aed;
+    --veh-truck: #ea580c;
+}

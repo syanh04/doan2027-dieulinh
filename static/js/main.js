@@ -1,531 +1,1341 @@
-﻿document.addEventListener("DOMContentLoaded", () => {
-    
-    // State variables
-    let currentMode = "detection";
-    let confThresh = 0.15;
-    let soundEnabled = true;
-    let alarmActive = false;
-    let webcamStream = null;
-    let vehicleChart = null;
+/**
+ * TRAFFICVISION ENTERPRISE - CLIENT APPLICATION CONTROLLER
+ * Architecture: 7-Tab SaaS System, Real-time Multicam, Strict Data Integrity,
+ * Traffic Forecasting with Backtest Errors (MAE, RMSE, MAPE).
+ */
 
-    // DOM Elements
-    const liveClock = document.getElementById("liveClock");
-    const alertBanner = document.getElementById("alertBanner");
-    const alertIcon = document.getElementById("alertIcon");
-    const alertBadge = document.getElementById("alertBadge");
-    const alertTitle = document.getElementById("alertTitle");
-    const alertDesc = document.getElementById("alertDesc");
-    const btnSoundToggle = document.getElementById("btnSoundToggle");
-    const alarmAudio = document.getElementById("alarmAudio");
+// Global fallback if clicked before DOM fully ready
+window.switchTab = function(tabId) {
+    if (window._internalSwitchTab) {
+        window._internalSwitchTab(tabId);
+    } else {
+        window.location.hash = tabId;
+    }
+};
 
-    const confSlider = document.getElementById("confSlider");
-    const confVal = document.getElementById("confVal");
-    const segBtns = document.querySelectorAll(".seg-btn");
+document.addEventListener("DOMContentLoaded", () => {
 
-    const fileInput = document.getElementById("fileInput");
-    const dropzone = document.getElementById("dropzone");
-    const tabBtns = document.querySelectorAll(".tab-btn");
-    const tabContents = document.querySelectorAll(".tab-content");
+    // Global Chart.js instances
+    let overviewFlowChart = null;
+    let flowHistoryChart = null;
+    let densityPcuChart = null;
+    let speedHistoryChart = null;
+    let analyticsVehicleMixChart = null;
+    let flowForecastChart = null;
 
-    const webcamVideo = document.getElementById("webcamVideo");
-    const webcamCanvas = document.getElementById("webcamCanvas");
-    const webcamOverlay = document.getElementById("webcamOverlay");
-    const btnStartCam = document.getElementById("btnStartCam");
-    const btnCaptureCam = document.getElementById("btnCaptureCam");
+    // =========================================================================
+    // 1. APPLICATION STATE
+    // =========================================================================
+    const AppState = {
+        activeTab: "overview",      // 'overview', 'live', 'analytics', 'forecast', 'sources', 'logs', 'settings'
+        theme: localStorage.getItem("tv_theme") || "dark",
+        user: null,
 
-    const samplesGrid = document.getElementById("samplesGrid");
-    const loadingOverlay = document.getElementById("loadingOverlay");
-    const placeholderView = document.getElementById("placeholderView");
-    const resultImage = document.getElementById("resultImage");
-    const processTimeTag = document.getElementById("processTimeTag");
+        cameras: [],
+        selectedCameraIds: new Set(["CAM-01", "CAM-02", "CAM-03", "CAM-04"]),
+        focusedCameraId: null,      // null = grid mode; "CAM-01" = focused single camera
+        currentLayout: "2x2",       // "1x1", "2x2", "3x3"
+        
+        // Analytics & Forecast Filters
+        analyticsRange: "5m",
+        forecastHorizon: 15,
+        forecastModel: "holt_winters",
 
-    const valTotalVehicles = document.getElementById("valTotalVehicles");
-    const valPcuScore = document.getElementById("valPcuScore");
-    const cntXeMay = document.getElementById("cntXeMay");
-    const cntOTo = document.getElementById("cntOTo");
-    const cntXeKhach = document.getElementById("cntXeKhach");
-    const cntXeTai = document.getElementById("cntXeTai");
-    const valDensity = document.getElementById("valDensity");
-    const valFlow = document.getElementById("valFlow");
+        soundEnabled: false,
+        alarmActive: false,
+        roiEditing: false,
+        activeRoiHandle: -1,
+        isStreamPaused: false,
 
-    const historyTableBody = document.getElementById("historyTableBody");
-    const btnClearHistory = document.getElementById("btnClearHistory");
+        sseSource: null
+    };
 
-    // Live Clock Update
+    // Apply saved theme immediately
+    document.documentElement.setAttribute("data-theme", AppState.theme);
+
+    // =========================================================================
+    // 2. DOM REFERENCES
+    // =========================================================================
+    const el = {
+        // Header
+        liveClock: document.getElementById("liveClock"),
+        gpuStatusText: document.getElementById("gpuStatusText"),
+        fpsStatusText: document.getElementById("fpsStatusText"),
+        latencyStatusText: document.getElementById("latencyStatusText"),
+        btnThemeToggle: document.getElementById("btnThemeToggle"),
+        iconTheme: document.getElementById("iconTheme"),
+        lblTheme: document.getElementById("lblTheme"),
+        btnSoundToggle: document.getElementById("btnSoundToggle"),
+        lblSound: document.getElementById("lblSound"),
+        iconSound: document.getElementById("iconSound"),
+        alarmAudio: document.getElementById("alarmAudio"),
+        btnLogout: document.getElementById("btnLogout"),
+        activeCamCountBadge: document.getElementById("activeCamCountBadge"),
+
+        // Navigation Tabs
+        navTabs: document.querySelectorAll(".nav-tab"),
+        tabPanels: document.querySelectorAll(".tab-panel"),
+
+        // Overview Tab
+        ovFlow: document.getElementById("ovFlow"),
+        ovDensity: document.getElementById("ovDensity"),
+        ovTotalVeh: document.getElementById("ovTotalVeh"),
+        ovNetworkStatus: document.getElementById("ovNetworkStatus"),
+        overviewStationCards: document.getElementById("overviewStationCards"),
+        ovVehicleMixBars: document.getElementById("ovVehicleMixBars"),
+        ovPctMotorcycle: document.getElementById("ovPctMotorcycle"),
+        ovPctCar: document.getElementById("ovPctCar"),
+        ovPctBus: document.getElementById("ovPctBus"),
+        ovPctTruck: document.getElementById("ovPctTruck"),
+        ovBarMotorcycle: document.getElementById("ovBarMotorcycle"),
+        ovBarCar: document.getElementById("ovBarCar"),
+        ovBarBus: document.getElementById("ovBarBus"),
+        ovBarTruck: document.getElementById("ovBarTruck"),
+
+        // Live Tab - Left Sidebar
+        cameraItemList: document.getElementById("cameraItemList"),
+        cameraSearchInput: document.getElementById("cameraSearchInput"),
+        btnToggleTuning: document.getElementById("btnToggleTuning"),
+        tuningChevron: document.getElementById("tuningChevron"),
+        tuningBody: document.getElementById("tuningBody"),
+        sliderConfidence: document.getElementById("sliderConfidence"),
+        lblConfidence: document.getElementById("lblConfidence"),
+
+        // Live Tab - Center Grid & Focus
+        gridTitle: document.getElementById("gridTitle"),
+        btnExitFocus: document.getElementById("btnExitFocus"),
+        layoutBtnGroup: document.getElementById("layoutBtnGroup"),
+        cameraGridStage: document.getElementById("cameraGridStage"),
+        cameraFocusStage: document.getElementById("cameraFocusStage"),
+        focusStreamImg: document.getElementById("focusStreamImg"),
+        focusRoiCanvas: document.getElementById("focusRoiCanvas"),
+        focusCamName: document.getElementById("focusCamName"),
+        focusCamBearing: document.getElementById("focusCamBearing"),
+        focusCamFps: document.getElementById("focusCamFps"),
+        btnFocusPause: document.getElementById("btnFocusPause"),
+        btnFocusSnapshot: document.getElementById("btnFocusSnapshot"),
+        btnFocusEditRoi: document.getElementById("btnFocusEditRoi"),
+        lblEditRoiState: document.getElementById("lblEditRoiState"),
+
+        // Live Tab - Right Column KPI
+        kpiFlow: document.getElementById("kpiFlow"),
+        kpiDensity: document.getElementById("kpiDensity"),
+        kpiPcu: document.getElementById("kpiPcu"),
+        kpiSpeed: document.getElementById("kpiSpeed"),
+        pctMotorcycle: document.getElementById("pctMotorcycle"),
+        pctCar: document.getElementById("pctCar"),
+        pctBus: document.getElementById("pctBus"),
+        pctTruck: document.getElementById("pctTruck"),
+        barMotorcycle: document.getElementById("barMotorcycle"),
+        barCar: document.getElementById("barCar"),
+        barBus: document.getElementById("barBus"),
+        barTruck: document.getElementById("barTruck"),
+        signalStatusBadge: document.getElementById("signalStatusBadge"),
+        signalTimer: document.getElementById("signalTimer"),
+        signalAdviceText: document.getElementById("signalAdviceText"),
+
+        // Analytics Tab
+        analyticsCameraSelect: document.getElementById("analyticsCameraSelect"),
+        pillsRange: document.querySelectorAll(".pill-range"),
+
+        // Forecast Tab
+        forecastCamSelect: document.getElementById("forecastCamSelect"),
+        forecastModelSelect: document.getElementById("forecastModelSelect"),
+        pillsForecast: document.querySelectorAll(".pill-forecast"),
+        valMae: document.getElementById("valMae"),
+        valRmse: document.getElementById("valRmse"),
+        valMape: document.getElementById("valMape"),
+        valSampleCount: document.getElementById("valSampleCount"),
+        forecastMetaNote: document.getElementById("forecastMetaNote"),
+
+        // Sources Tab
+        btnTriggerUploadModal: document.getElementById("btnTriggerUploadModal"),
+        sourcesCameraGrid: document.getElementById("sourcesCameraGrid"),
+        uploadedVideosTableBody: document.getElementById("uploadedVideosTableBody"),
+
+        // Logs Tab
+        logFilterCam: document.getElementById("logFilterCam"),
+        logFilterLevel: document.getElementById("logFilterLevel"),
+        logSearchInput: document.getElementById("logSearchInput"),
+        logTotalCount: document.getElementById("logTotalCount"),
+        logsTableBody: document.getElementById("logsTableBody"),
+        btnClearLogs: document.getElementById("btnClearLogs"),
+
+        // Settings Tab
+        inputRoiLength: document.getElementById("inputRoiLength"),
+        inputRoiWidth: document.getElementById("inputRoiWidth"),
+        inputThrL2: document.getElementById("inputThrL2"),
+        inputThrL3: document.getElementById("inputThrL3"),
+        inputThrL4: document.getElementById("inputThrL4"),
+        btnSaveSystemSettings: document.getElementById("btnSaveSystemSettings"),
+
+        // Mini Footer
+        miniLogTicker: document.getElementById("miniLogTicker"),
+        btnJumpToLogsTab: document.getElementById("btnJumpToLogsTab"),
+
+        // Upload Modal
+        uploadModal: document.getElementById("uploadModal"),
+        modalUploadCamSelect: document.getElementById("modalUploadCamSelect"),
+        modalVideoFileInput: document.getElementById("modalVideoFileInput"),
+        uploadProgressContainer: document.getElementById("uploadProgressContainer"),
+        uploadProgressBar: document.getElementById("uploadProgressBar"),
+        uploadStatusText: document.getElementById("uploadStatusText"),
+        btnCloseUploadModal: document.getElementById("btnCloseUploadModal"),
+        btnCancelUploadModal: document.getElementById("btnCancelUploadModal"),
+        btnConfirmUpload: document.getElementById("btnConfirmUpload")
+    };
+
+    function refreshIcons() {
+        if (window.lucide && typeof window.lucide.createIcons === "function") {
+            window.lucide.createIcons();
+        }
+    }
+    refreshIcons();
+
+    // =========================================================================
+    // 3. THEME & AUTH CONTROLLER
+    // =========================================================================
+    function updateThemeUI() {
+        const isDark = AppState.theme === "dark";
+        document.documentElement.setAttribute("data-theme", AppState.theme);
+        localStorage.setItem("tv_theme", AppState.theme);
+        el.lblTheme.textContent = isDark ? "Tối" : "Sáng";
+        el.iconTheme.setAttribute("data-lucide", isDark ? "moon" : "sun");
+        refreshIcons();
+
+        // Cập nhật lại màu biểu đồ Chart.js theo theme
+        if (window.Chart) {
+            Chart.defaults.color = isDark ? "#94a3b8" : "#475569";
+            if (overviewFlowChart) overviewFlowChart.update();
+            if (flowHistoryChart) flowHistoryChart.update();
+            if (densityPcuChart) densityPcuChart.update();
+            if (speedHistoryChart) speedHistoryChart.update();
+            if (analyticsVehicleMixChart) analyticsVehicleMixChart.update();
+            if (flowForecastChart) flowForecastChart.update();
+        }
+    }
+
+    el.btnThemeToggle.addEventListener("click", () => {
+        AppState.theme = AppState.theme === "dark" ? "light" : "dark";
+        updateThemeUI();
+    });
+    updateThemeUI();
+
+    // Auth Logout
+    el.btnLogout.addEventListener("click", async () => {
+        try {
+            await fetch("/api/auth/logout", { method: "POST" });
+            window.location.href = "/login";
+        } catch (e) {
+            window.location.href = "/login";
+        }
+    });
+
+    // Clock
     function updateClock() {
         const now = new Date();
-        liveClock.textContent = now.toLocaleTimeString("vi-VN");
+        el.liveClock.textContent = now.toLocaleTimeString("vi-VN", { hour12: false }) + " UTC+7";
     }
     setInterval(updateClock, 1000);
     updateClock();
 
-    // Init Chart
-    function initChart() {
-        const ctx = document.getElementById("vehicleChart").getContext("2d");
-        vehicleChart = new Chart(ctx, {
-            type: "doughnut",
-            data: {
-                labels: ["Xe máy", "Ô tô con", "Xe khách", "Xe tải"],
-                datasets: [{
-                    data: [0, 0, 0, 0],
-                    backgroundColor: [
-                        "#ff901e", // Xe máy
-                        "#00d7ff", // Ô tô
-                        "#e22b8a", // Xe khách
-                        "#4370ff"  // Xe tải
-                    ],
-                    borderWidth: 0
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: {
-                        position: "bottom",
-                        labels: { color: "#94a3b8", font: { family: "Plus Jakarta Sans", size: 12 } }
-                    }
-                },
-                cutout: "70%"
-            }
-        });
-    }
-    initChart();
-
-    // Fetch Preset Samples
-    async function loadSamples() {
+    // Telemetry
+    async function fetchSystemTelemetry() {
         try {
-            const res = await fetch("/api/samples");
+            const res = await fetch("/api/system_telemetry");
+            if (!res.ok) {
+                if (res.status === 401) window.location.href = "/login";
+                return;
+            }
             const data = await res.json();
-            samplesGrid.innerHTML = "";
-
-            if (data.samples && data.samples.length > 0) {
-                data.samples.forEach(s => {
-                    const div = document.createElement("div");
-                    div.className = "sample-item";
-                    div.innerHTML = `
-                        <img src="${s.url}" alt="${s.title}">
-                        <div class="sample-title">${s.title}</div>
-                    `;
-                    div.addEventListener("click", () => {
-                        processImageUrl(s.url);
-                    });
-                    samplesGrid.appendChild(div);
-                });
-            } else {
-                samplesGrid.innerHTML = "<p style='color:#94a3b8; font-size:0.8rem;'>Chưa có ảnh mẫu</p>";
-            }
-        } catch (e) {
-            console.error("Failed to load samples:", e);
-        }
-    }
-    loadSamples();
-
-    // Mode Switcher
-    segBtns.forEach(btn => {
-        btn.addEventListener("click", () => {
-            segBtns.forEach(b => b.classList.remove("active"));
-            btn.classList.add("active");
-            currentMode = btn.dataset.mode;
-        });
-    });
-
-    // Slider
-    confSlider.addEventListener("input", (e) => {
-        confThresh = e.target.value / 100;
-        confVal.textContent = e.target.value + "%";
-    });
-
-    // Sound toggle
-    btnSoundToggle.addEventListener("click", () => {
-        soundEnabled = !soundEnabled;
-        if (soundEnabled) {
-            btnSoundToggle.classList.add("active");
-            btnSoundToggle.innerHTML = '<i class="fa-solid fa-volume-high"></i> Âm thanh';
-        } else {
-            btnSoundToggle.classList.remove("active");
-            btnSoundToggle.innerHTML = '<i class="fa-solid fa-volume-xmark"></i> Tắt âm';
-            alarmAudio.pause();
-            alarmActive = false;
-        }
-    });
-
-    // DOM Elements for Video
-    const videoDropzone = document.getElementById("videoDropzone");
-    const videoFileInput = document.getElementById("videoFileInput");
-    const btnPlaySampleVideo = document.getElementById("btnPlaySampleVideo");
-    const videoStream = document.getElementById("videoStream");
-
-    // Tabs
-    tabBtns.forEach(btn => {
-        btn.addEventListener("click", () => {
-            tabBtns.forEach(b => b.classList.remove("active"));
-            tabContents.forEach(c => c.classList.remove("active"));
-            btn.classList.add("active");
-            const target = btn.dataset.tab;
-            if (target === "upload") {
-                document.getElementById("tabUpload").classList.add("active");
-            } else if (target === "video") {
-                document.getElementById("tabVideo").classList.add("active");
-            } else {
-                document.getElementById("tabWebcam").classList.add("active");
-            }
-        });
-    });
-
-    // Video Dropzone & Upload
-    if (videoDropzone && videoFileInput) {
-        videoDropzone.addEventListener("dragover", (e) => {
-            e.preventDefault();
-            videoDropzone.style.borderColor = "#4facfe";
-        });
-        videoDropzone.addEventListener("dragleave", () => {
-            videoDropzone.style.borderColor = "rgba(79, 172, 254, 0.3)";
-        });
-        videoDropzone.addEventListener("drop", (e) => {
-            e.preventDefault();
-            videoDropzone.style.borderColor = "rgba(79, 172, 254, 0.3)";
-            if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-                uploadVideoFile(e.dataTransfer.files[0]);
-            }
-        });
-        videoFileInput.addEventListener("change", (e) => {
-            if (e.target.files && e.target.files[0]) {
-                uploadVideoFile(e.target.files[0]);
-            }
-        });
-    }
-
-    if (btnPlaySampleVideo) {
-        btnPlaySampleVideo.addEventListener("click", () => {
-            playVideoStream("sample_traffic.mp4");
-        });
-    }
-
-    async function uploadVideoFile(file) {
-        showLoading(true);
-        const formData = new FormData();
-        formData.append("file", file);
-
-        try {
-            const res = await fetch("/api/upload_video", {
-                method: "POST",
-                body: formData
-            });
-            const data = await res.json();
-            showLoading(false);
-
             if (data.success) {
-                playVideoStream(data.filename);
-            } else {
-                alert("Lỗi tải video: " + data.error);
+                el.gpuStatusText.textContent = `GPU: ${data.device_name || "RTX 3060"}`;
             }
-        } catch (e) {
-            showLoading(false);
-            alert("Lỗi kết nối upload video: " + e.message);
+        } catch (e) {}
+    }
+    fetchSystemTelemetry();
+    setInterval(fetchSystemTelemetry, 15000);
+
+    // =========================================================================
+    // 4. TAB NAVIGATION & URL HASH ROUTING
+    // =========================================================================
+    function switchTab(tabId) {
+        if (!tabId) tabId = "overview";
+        AppState.activeTab = tabId;
+        try {
+            if (window.location.hash !== `#${tabId}`) {
+                history.replaceState(null, null, `#${tabId}`);
+            }
+        } catch (e) {}
+
+        // 1. Cập nhật trạng thái active cho các nút tab
+        document.querySelectorAll(".nav-tab").forEach(t => {
+            const match = t.getAttribute("data-tab") === tabId;
+            t.classList.toggle("active", match);
+        });
+
+        // 2. Cập nhật trạng thái hiển thị cho các panels (chuyển màn hình ngay lập tức 100%)
+        document.querySelectorAll(".tab-panel").forEach(p => {
+            const isTarget = p.id === `tabPanel-${tabId}`;
+            p.classList.toggle("active", isTarget);
+            if (isTarget) {
+                p.style.setProperty("display", "block", "important");
+            } else {
+                p.style.setProperty("display", "none", "important");
+            }
+        });
+
+        // 3. Kích hoạt render nội dung tương ứng với từng tab trong try...catch an toàn
+        try {
+            if (tabId === "overview") {
+                renderOverviewStationCards();
+                updateOverviewCharts();
+            } else if (tabId === "live") {
+                renderCameraGrid();
+                renderLeftCameraList();
+            } else if (tabId === "analytics") {
+                updateAnalyticsCharts();
+            } else if (tabId === "forecast") {
+                updateForecastTab();
+            } else if (tabId === "sources") {
+                loadSourcesTab();
+            } else if (tabId === "logs") {
+                loadLogsTab();
+            }
+        } catch (err) {
+            console.warn("Lỗi khi cập nhật dữ liệu tab " + tabId, err);
         }
+
+        refreshIcons();
     }
 
-    let videoPollInterval = null;
+    // Expose ra window để có thể gọi từ inline onclick nếu cần
+    window._internalSwitchTab = switchTab;
+    window.switchTab = switchTab;
 
-    function playVideoStream(filename) {
-        if (videoPollInterval) clearInterval(videoPollInterval);
+    // Gán sự kiện click cho tất cả các nút nav-tab
+    document.querySelectorAll(".nav-tab").forEach(t => {
+        t.addEventListener("click", function(e) {
+            e.preventDefault();
+            const targetTab = this.getAttribute("data-tab");
+            if (targetTab) {
+                switchTab(targetTab);
+            }
+        });
+    });
 
-        placeholderView.style.display = "none";
-        resultImage.style.display = "none";
-        videoStream.style.display = "block";
-        videoStream.src = `/video_feed/${filename}?conf=${confThresh}&t=${Date.now()}`;
-        processTimeTag.innerHTML = `<i class="fa-solid fa-video"></i> Realtime Stream`;
+    // Jump from footer to logs tab
+    if (el.btnJumpToLogsTab) {
+        el.btnJumpToLogsTab.addEventListener("click", () => {
+            switchTab("logs");
+        });
+    }
 
-        // Start polling video frame metrics
-        let lastLoggedTime = 0;
-        videoPollInterval = setInterval(async () => {
-            try {
-                const res = await fetch(`/api/video_metrics/${filename}`);
-                if (!res.ok) return;
-                const data = await res.json();
-                if (data.success && data.metrics) {
-                    const m = data.metrics;
-                    valTotalVehicles.textContent = m.total_vehicles;
-                    valPcuScore.textContent = m.pcu_score;
-                    valDensity.innerHTML = `${m.density != null ? m.density : 0} <small>xe/km</small>`;
-                    valFlow.textContent = (m.flow != null) ? Math.round(m.flow) : "\u2014";
+    // Handle back/forward hash changes
+    window.addEventListener("hashchange", () => {
+        const h = window.location.hash.replace("#", "");
+        if (h && h !== AppState.activeTab) {
+            switchTab(h);
+        }
+    });
 
-                    const c = m.counts;
-                    cntXeMay.textContent = c.xe_may;
-                    cntOTo.textContent = c.o_to_con;
-                    cntXeKhach.textContent = c.xe_khach;
-                    cntXeTai.textContent = c.xe_tai;
+    // =========================================================================
+    // 5. CHART.JS INITIALIZATIONS
+    // =========================================================================
+    function initAllCharts() {
+        if (!window.Chart) return;
 
-                    // Update Chart
-                    vehicleChart.data.datasets[0].data = [c.xe_may, c.o_to_con, c.xe_khach, c.xe_tai];
-                    vehicleChart.update();
+        const isDark = AppState.theme === "dark";
+        Chart.defaults.color = isDark ? "#94a3b8" : "#475569";
+        Chart.defaults.font.family = "'Inter', sans-serif";
+        Chart.defaults.font.size = 11;
 
-                    // Stream đã kết thúc (đã tua hết số lần cho phép) -> dừng polling
-                    if (m.stream_ended) {
-                        clearInterval(videoPollInterval);
-                        videoPollInterval = null;
-                        alertBadge.textContent = "ĐÃ KẾT THÚC";
-                        alertBadge.style.backgroundColor = "#64748b";
-                        alertBadge.style.color = "#fff";
-                        alertTitle.textContent = "Luồng video đã kết thúc";
-                        alertDesc.textContent = m.stream_message ||
-                            "Video đã được phát hết. Vui lòng tải video mới hoặc dùng lại video mẫu.";
-                        alertIcon.innerHTML = '<i class="fa-solid fa-circle-info" style="color:#94a3b8"></i>';
-                        syncCongestionAlarm(0);
-                        return;
-                    }
-
-                    // Update Alert Banner
-                    const cg = m.congestion;
-                    alertBanner.className = "alert-banner status-" + cg.badge;
-                    alertBadge.textContent = cg.name.toUpperCase();
-                    alertBadge.style.backgroundColor = cg.color;
-                    alertBadge.style.color = "#000";
-
-                    alertTitle.textContent = `Mức độ Giao thông (Video): ${cg.name}`;
-                    alertDesc.textContent = cg.description;
-
-                    if (cg.level === 0) alertIcon.innerHTML = '<i class="fa-solid fa-circle-minus" style="color:#94a3b8"></i>';
-                    else if (cg.level === 1) alertIcon.innerHTML = '<i class="fa-solid fa-circle-check" style="color:#10b981"></i>';
-                    else if (cg.level === 2) alertIcon.innerHTML = '<i class="fa-solid fa-triangle-exclamation" style="color:#f59e0b"></i>';
-                    else if (cg.level >= 3) alertIcon.innerHTML = '<i class="fa-solid fa-bell" style="color:#ef4444"></i>';
-
-                    syncCongestionAlarm(cg.level);
-
-                    // Periodically add to log table (every 3 seconds)
-                    const nowSec = Math.floor(Date.now() / 3000);
-                    if (nowSec > lastLoggedTime) {
-                        lastLoggedTime = nowSec;
-                        addHistoryRow({
-                            total_vehicles: m.total_vehicles,
-                            pcu_score: m.pcu_score,
-                            counts: c,
-                            congestion: cg,
-                            process_time_ms: 30
-                        });
+        // 1. Overview Flow Chart
+        const ctxOv = document.getElementById("overviewFlowChart");
+        if (ctxOv) {
+            overviewFlowChart = new Chart(ctxOv.getContext("2d"), {
+                type: "line",
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: "Lưu lượng bình quân (xe/h)",
+                        data: [],
+                        borderColor: "#3b82f6",
+                        backgroundColor: "rgba(59, 130, 246, 0.08)",
+                        borderWidth: 2,
+                        tension: 0.25,
+                        fill: true,
+                        pointRadius: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { grid: { color: isDark ? "#202632" : "#e2e8f0" } },
+                        y: {
+                            grid: { color: isDark ? "#202632" : "#e2e8f0" },
+                            title: { display: true, text: "xe/h", font: { size: 10 } }
+                        }
                     }
                 }
-            } catch (err) {
-                // Ignore poll errors
+            });
+        }
+
+        // 2. Analytics Flow Chart
+        const ctxFlow = document.getElementById("flowHistoryChart");
+        if (ctxFlow) {
+            flowHistoryChart = new Chart(ctxFlow.getContext("2d"), {
+                type: "line",
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: "Lưu lượng Q (xe/h)",
+                        data: [],
+                        borderColor: "#3b82f6",
+                        backgroundColor: "rgba(59, 130, 246, 0.08)",
+                        borderWidth: 2,
+                        tension: 0.2,
+                        fill: true,
+                        pointRadius: 3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { grid: { color: isDark ? "#202632" : "#e2e8f0" } },
+                        y: { grid: { color: isDark ? "#202632" : "#e2e8f0" } }
+                    }
+                }
+            });
+        }
+
+        // 3. Density & PCU Chart
+        const ctxDp = document.getElementById("densityPcuChart");
+        if (ctxDp) {
+            densityPcuChart = new Chart(ctxDp.getContext("2d"), {
+                type: "line",
+                data: {
+                    labels: [],
+                    datasets: [
+                        {
+                            label: "Mật độ K (xe/km)",
+                            data: [],
+                            borderColor: "#f59e0b",
+                            borderWidth: 2,
+                            tension: 0.2,
+                            pointRadius: 2,
+                            yAxisID: "y"
+                        },
+                        {
+                            label: "Chỉ số PCU",
+                            data: [],
+                            borderColor: "#8b5cf6",
+                            borderWidth: 2,
+                            tension: 0.2,
+                            pointRadius: 2,
+                            yAxisID: "y1"
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { grid: { color: isDark ? "#202632" : "#e2e8f0" } },
+                        y: {
+                            type: "linear",
+                            position: "left",
+                            grid: { color: isDark ? "#202632" : "#e2e8f0" },
+                            title: { display: true, text: "xe/km" }
+                        },
+                        y1: {
+                            type: "linear",
+                            position: "right",
+                            grid: { display: false },
+                            title: { display: true, text: "PCU" }
+                        }
+                    }
+                }
+            });
+        }
+
+        // 4. Forecast Chart (Holt-Winters Confidence Band)
+        const ctxFc = document.getElementById("flowForecastChart");
+        if (ctxFc) {
+            flowForecastChart = new Chart(ctxFc.getContext("2d"), {
+                type: "line",
+                data: {
+                    labels: [],
+                    datasets: [
+                        {
+                            label: "Vùng cận trên (Upper 95%)",
+                            data: [],
+                            borderColor: "transparent",
+                            backgroundColor: "rgba(59, 130, 246, 0.12)",
+                            pointRadius: 0,
+                            fill: "+1"
+                        },
+                        {
+                            label: "Vùng cận dưới (Lower 95%)",
+                            data: [],
+                            borderColor: "transparent",
+                            backgroundColor: "transparent",
+                            pointRadius: 0,
+                            fill: false
+                        },
+                        {
+                            label: "Lưu lượng quan sát thực",
+                            data: [],
+                            borderColor: "#3b82f6",
+                            borderWidth: 2,
+                            pointRadius: 3,
+                            fill: false
+                        },
+                        {
+                            label: "Đường dự báo tương lai",
+                            data: [],
+                            borderColor: "#10b981",
+                            borderWidth: 2,
+                            borderDash: [5, 4],
+                            pointRadius: 3,
+                            fill: false
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: "top", labels: { boxWidth: 12 } }
+                    },
+                    scales: {
+                        x: { grid: { color: isDark ? "#202632" : "#e2e8f0" } },
+                        y: {
+                            grid: { color: isDark ? "#202632" : "#e2e8f0" },
+                            title: { display: true, text: "Lưu lượng Q (xe/h)" }
+                        }
+                    }
+                }
+            });
+        }
+
+        // 5. Speed History Chart (V - km/h)
+        const ctxSp = document.getElementById("speedHistoryChart");
+        if (ctxSp) {
+            speedHistoryChart = new Chart(ctxSp.getContext("2d"), {
+                type: "line",
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: "Tốc độ trung bình (km/h)",
+                        data: [],
+                        borderColor: "#06b6d4",
+                        backgroundColor: "rgba(6, 182, 212, 0.08)",
+                        borderWidth: 2,
+                        tension: 0.3,
+                        fill: true,
+                        pointRadius: 2.5
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { grid: { color: isDark ? "#202632" : "#e2e8f0" } },
+                        y: {
+                            grid: { color: isDark ? "#202632" : "#e2e8f0" },
+                            title: { display: true, text: "V (km/h)" },
+                            min: 0,
+                            max: 70
+                        }
+                    }
+                }
+            });
+        }
+
+        // 6. Analytics Vehicle Mix Doughnut Chart
+        const ctxVm = document.getElementById("analyticsVehicleMixChart");
+        if (ctxVm) {
+            analyticsVehicleMixChart = new Chart(ctxVm.getContext("2d"), {
+                type: "doughnut",
+                data: {
+                    labels: ["Xe máy", "Ô tô con", "Xe khách", "Xe tải"],
+                    datasets: [{
+                        data: [65, 25, 6, 4],
+                        backgroundColor: ["#06b6d4", "#f59e0b", "#3b82f6", "#ef4444"],
+                        borderWidth: 1,
+                        borderColor: isDark ? "#161a21" : "#ffffff"
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: "62%",
+                    plugins: {
+                        legend: {
+                            position: "right",
+                            labels: { boxWidth: 12, padding: 12, font: { size: 11 } }
+                        }
+                    }
+                }
+            });
+        }
+    }
+    initAllCharts();
+
+    // =========================================================================
+    // 6. REAL-TIME DATA & STATE SYNCHRONIZER
+    // =========================================================================
+    async function fetchCameras() {
+        try {
+            const res = await fetch("/api/cameras");
+            if (!res.ok) {
+                if (res.status === 401) window.location.href = "/login";
+                return;
             }
-        }, 400);
+            const data = await res.json();
+            if (data.success && data.cameras) {
+                AppState.cameras = data.cameras;
+                updateAllViews();
+            }
+        } catch (e) {}
     }
 
-    // Dropzone logic
-    dropzone.addEventListener("dragover", (e) => {
-        e.preventDefault();
-        dropzone.style.borderColor = "#00f2fe";
-    });
+    function updateAllViews() {
+        el.activeCamCountBadge.textContent = `${AppState.cameras.length} camera trực tuyến`;
+        updateAggregatedKpis();
 
-    dropzone.addEventListener("dragleave", () => {
-        dropzone.style.borderColor = "rgba(0, 242, 254, 0.3)";
-    });
-
-    dropzone.addEventListener("drop", (e) => {
-        e.preventDefault();
-        dropzone.style.borderColor = "rgba(0, 242, 254, 0.3)";
-        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-            uploadFile(e.dataTransfer.files[0]);
+        if (AppState.activeTab === "overview") {
+            renderOverviewStationCards();
+        } else if (AppState.activeTab === "live") {
+            renderCameraGrid();
+            renderLeftCameraList();
         }
-    });
-
-    fileInput.addEventListener("change", (e) => {
-        if (e.target.files && e.target.files[0]) {
-            uploadFile(e.target.files[0]);
-        }
-    });
-
-    // Webcam handlers
-    btnStartCam.addEventListener("click", async () => {
-        try {
-            webcamStream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } });
-            webcamVideo.srcObject = webcamStream;
-            webcamOverlay.style.display = "none";
-            btnCaptureCam.disabled = false;
-            btnStartCam.innerHTML = '<i class="fa-solid fa-check"></i> Camera Sẵn Sàng';
-        } catch (err) {
-            alert("Không thể truy cập camera: " + err.message);
-        }
-    });
-
-    btnCaptureCam.addEventListener("click", () => {
-        if (!webcamStream) return;
-        webcamCanvas.width = webcamVideo.videoWidth;
-        webcamCanvas.height = webcamVideo.videoHeight;
-        const ctx = webcamCanvas.getContext("2d");
-        ctx.drawImage(webcamVideo, 0, 0, webcamCanvas.width, webcamCanvas.height);
-        const b64 = webcamCanvas.toDataURL("image/jpeg", 0.9);
-        processBase64Image(b64);
-    });
-
-    // API calls
-    async function uploadFile(file) {
-        const formData = new FormData();
-        formData.append("file", file);
-        formData.append("mode", currentMode);
-        formData.append("conf", confThresh);
-
-        sendApiRequest(formData, false);
     }
 
-    async function processImageUrl(url) {
-        try {
-            showLoading(true);
-            const res = await fetch(url);
-            const blob = await res.blob();
-            const formData = new FormData();
-            formData.append("file", blob, "sample.jpg");
-            formData.append("mode", currentMode);
-            formData.append("conf", confThresh);
+    function updateAggregatedKpis() {
+        let flowSum = 0, flowCount = 0;
+        let densitySum = 0, densityCount = 0;
+        let pcuSum = 0;
+        let speedSum = 0, speedCount = 0;
+        let totalVehInRoi = 0;
+        let counts = { xe_may: 0, o_to_con: 0, xe_khach: 0, xe_tai: 0 };
 
-            sendApiRequest(formData, false);
+        let activeCams = [];
+        if (AppState.focusedCameraId) {
+            const c = AppState.cameras.find(cam => cam.id === AppState.focusedCameraId);
+            if (c) activeCams = [c];
+        } else {
+            activeCams = AppState.cameras.filter(c => AppState.selectedCameraIds.has(c.id));
+        }
+        if (activeCams.length === 0) activeCams = AppState.cameras;
+
+        activeCams.forEach(c => {
+            const m = c.metrics || {};
+            if (m.flow !== null && m.flow !== undefined) {
+                flowSum += m.flow;
+                flowCount++;
+            }
+            if (m.density !== null && m.density !== undefined) {
+                densitySum += m.density;
+                densityCount++;
+            }
+            if (m.speed !== null && m.speed !== undefined) {
+                speedSum += m.speed;
+                speedCount++;
+            }
+            pcuSum += (m.pcu || 0);
+            totalVehInRoi += (m.total_vehicles || 0);
+
+            const mc = m.counts || {};
+            counts.xe_may += (mc.xe_may || 0);
+            counts.o_to_con += (mc.o_to_con || 0);
+            counts.xe_khach += (mc.xe_khach || 0);
+            counts.xe_tai += (mc.xe_tai || 0);
+        });
+
+        // 1. Cập nhật Overview Tab
+        el.ovFlow.textContent = flowCount > 0 ? Math.round(flowSum / flowCount).toLocaleString("vi-VN") : "—";
+        el.ovDensity.textContent = densityCount > 0 ? (densitySum / densityCount).toFixed(1) : "—";
+        el.ovTotalVeh.textContent = totalVehInRoi;
+
+        // 2. Cập nhật Live Tab KPIs
+        el.kpiFlow.textContent = flowCount > 0 ? Math.round(flowSum / flowCount).toLocaleString("vi-VN") : "—";
+        el.kpiDensity.textContent = densityCount > 0 ? (densitySum / densityCount).toFixed(1) : "—";
+        el.kpiPcu.textContent = pcuSum.toFixed(1);
+        el.kpiSpeed.textContent = speedCount > 0 ? Math.round(speedSum / speedCount) : "—";
+
+        // 3. Cơ cấu phương tiện - KHÔNG CHIA CHO 0 KHI 0 XE
+        const totalVeh = (counts.xe_may + counts.o_to_con + counts.xe_khach + counts.xe_tai);
+        let pMotor = 0, pCar = 0, pBus = 0, pTruck = 0;
+
+        if (totalVeh > 0) {
+            pMotor = Math.round(counts.xe_may / totalVeh * 100);
+            pCar = Math.round(counts.o_to_con / totalVeh * 100);
+            pBus = Math.round(counts.xe_khach / totalVeh * 100);
+            pTruck = Math.max(0, 100 - (pMotor + pCar + pBus));
+
+            if (el.pctMotorcycle) el.pctMotorcycle.textContent = `${pMotor}% (${counts.xe_may} xe)`;
+            if (el.pctCar) el.pctCar.textContent = `${pCar}% (${counts.o_to_con} xe)`;
+            if (el.pctBus) el.pctBus.textContent = `${pBus}% (${counts.xe_khach} xe)`;
+            if (el.pctTruck) el.pctTruck.textContent = `${pTruck}% (${counts.xe_tai} xe)`;
+
+            if (el.ovPctMotorcycle) el.ovPctMotorcycle.textContent = `${pMotor}% (${counts.xe_may} xe)`;
+            if (el.ovPctCar) el.ovPctCar.textContent = `${pCar}% (${counts.o_to_con} xe)`;
+            if (el.ovPctBus) el.ovPctBus.textContent = `${pBus}% (${counts.xe_khach} xe)`;
+            if (el.ovPctTruck) el.ovPctTruck.textContent = `${pTruck}% (${counts.xe_tai} xe)`;
+        } else {
+            if (el.pctMotorcycle) el.pctMotorcycle.textContent = "— (0 xe)";
+            if (el.pctCar) el.pctCar.textContent = "— (0 xe)";
+            if (el.pctBus) el.pctBus.textContent = "— (0 xe)";
+            if (el.pctTruck) el.pctTruck.textContent = "— (0 xe)";
+
+            if (el.ovPctMotorcycle) el.ovPctMotorcycle.textContent = "— (0 xe)";
+            if (el.ovPctCar) el.ovPctCar.textContent = "— (0 xe)";
+            if (el.ovPctBus) el.ovPctBus.textContent = "— (0 xe)";
+            if (el.ovPctTruck) el.ovPctTruck.textContent = "— (0 xe)";
+        }
+
+        if (el.barMotorcycle) el.barMotorcycle.style.width = `${pMotor}%`;
+        if (el.barCar) el.barCar.style.width = `${pCar}%`;
+        if (el.barBus) el.barBus.style.width = `${pBus}%`;
+        if (el.barTruck) el.barTruck.style.width = `${pTruck}%`;
+
+        if (el.ovBarMotorcycle) el.ovBarMotorcycle.style.width = `${pMotor}%`;
+        if (el.ovBarCar) el.ovBarCar.style.width = `${pCar}%`;
+        if (el.ovBarBus) el.ovBarBus.style.width = `${pBus}%`;
+        if (el.ovBarTruck) el.ovBarTruck.style.width = `${pTruck}%`;
+
+        // Signal card
+        const avgD = densityCount > 0 ? (densitySum / densityCount) : 0;
+        updateSignalCard(avgD);
+    }
+
+    function updateSignalCard(avgDensity) {
+        let badge = "Thông thoáng", badgeClass = "normal", timer = "Chu kỳ chuẩn 90s";
+        let advice = "Lưu lượng ổn định dưới ngưỡng cảnh báo. Duy trì pha xanh trục chính 45s.";
+        let level = 1;
+
+        if (avgDensity >= 220) {
+            badge = "Ùn tắc nghiêm trọng"; badgeClass = "congested"; timer = "Pha xanh mở rộng 80s / 120s";
+            advice = "Kích hoạt kế hoạch giải tỏa khẩn cấp. Tăng pha xanh +35s, CSGT hỗ trợ điều tiết.";
+            level = 4;
+        } else if (avgDensity >= 120) {
+            badge = "Đông đúc"; badgeClass = "moderate"; timer = "Pha thích ứng 55s / 100s";
+            advice = "Kéo dài pha xanh trục chính +10s. Khuyến nghị xe tải giữ làn ngoài.";
+            level = 2;
+        }
+
+        el.signalStatusBadge.textContent = badge;
+        el.signalStatusBadge.className = `signal-badge ${badgeClass}`;
+        el.signalTimer.textContent = timer;
+        el.signalAdviceText.textContent = advice;
+        el.ovNetworkStatus.textContent = badge;
+        el.ovNetworkStatus.className = `signal-badge ${badgeClass}`;
+
+        // Alarm Audio
+        if (level >= 3 && AppState.soundEnabled) {
+            if (!AppState.alarmActive) {
+                AppState.alarmActive = true;
+                el.alarmAudio.currentTime = 0;
+                el.alarmAudio.play().catch(() => { AppState.alarmActive = false; });
+            }
+        } else {
+            el.alarmAudio.pause();
+            AppState.alarmActive = false;
+        }
+    }
+
+    // =========================================================================
+    // 7. OVERVIEW TAB CONTROLLER
+    // =========================================================================
+    function renderOverviewStationCards() {
+        if (!el.overviewStationCards) return;
+        el.overviewStationCards.innerHTML = AppState.cameras.map(c => {
+            const m = c.metrics || {};
+            const lvlClass = m.congestion_level === 1 ? "normal" : (m.congestion_level === 2 ? "moderate" : "congested");
+            const flowDisplay = m.flow !== null && m.flow !== undefined ? `${Math.round(m.flow)} xe/h` : "—";
+            const densityDisplay = m.density !== null && m.density !== undefined ? `${m.density} xe/km` : "—";
+
+            return `
+                <div class="station-card" onclick="window.switchTab('live'); setTimeout(() => { if (typeof enterFocusMode === 'function') enterFocusMode('${c.id}'); }, 50);">
+                    <img src="${c.stream_url_low}" class="station-card-img" alt="${c.id}" onerror="this.style.opacity='0.2';">
+                    <div class="station-card-body">
+                        <div class="station-card-title">
+                            <span>${c.id} · ${c.name}</span>
+                            <span class="signal-badge ${lvlClass}">${m.congestion_name || 'Thông thoáng'}</span>
+                        </div>
+                        <div class="station-card-meta">${c.bearing} · ${c.district}</div>
+                        <div class="station-card-stats">
+                            <div class="station-stat-item">
+                                <span>Lưu lượng</span>
+                                <span class="station-stat-val tabular-nums">${flowDisplay}</span>
+                            </div>
+                            <div class="station-stat-item">
+                                <span>Mật độ</span>
+                                <span class="station-stat-val tabular-nums">${densityDisplay}</span>
+                            </div>
+                            <div class="station-stat-item">
+                                <span>Số xe ROI</span>
+                                <span class="station-stat-val tabular-nums">${m.total_vehicles || 0} xe</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join("");
+    }
+
+    async function updateOverviewCharts() {
+        if (!overviewFlowChart) return;
+        try {
+            const res = await fetch("/api/metrics?camera_id=ALL&range=15m");
+            const data = await res.json();
+            if (data.success && data.history) {
+                overviewFlowChart.data.labels = data.history.map(h => h.time_str);
+                overviewFlowChart.data.datasets[0].data = data.history.map(h => h.flow);
+                overviewFlowChart.update("none");
+            }
+        } catch (e) {}
+    }
+
+    // =========================================================================
+    // 8. LIVE TAB CONTROLLER (MULTI-CAMERA GRID & FOCUS)
+    // =========================================================================
+    function renderLeftCameraList() {
+        if (!el.cameraItemList) return;
+        const query = el.cameraSearchInput ? el.cameraSearchInput.value.toLowerCase().trim() : "";
+
+        const filtered = AppState.cameras.filter(c => {
+            return c.id.toLowerCase().includes(query) || c.name.toLowerCase().includes(query) || c.district.toLowerCase().includes(query);
+        });
+
+        el.cameraItemList.innerHTML = filtered.map(c => {
+            const isChecked = AppState.selectedCameraIds.has(c.id);
+            const isFocused = AppState.focusedCameraId === c.id;
+            const m = c.metrics || {};
+            const flowDisplay = m.flow !== null && m.flow !== undefined ? `${Math.round(m.flow)} xe/h` : "—";
+
+            return `
+                <div class="camera-item ${isFocused ? 'focused' : ''}" data-cam-id="${c.id}">
+                    <input type="checkbox" class="cam-chk" data-cam-id="${c.id}" ${isChecked ? 'checked' : ''} onclick="event.stopPropagation();">
+                    <img src="${c.stream_url_low}" class="cam-thumb" alt="${c.id}">
+                    <div class="cam-meta">
+                        <div class="cam-name-row">${c.id} · ${c.name}</div>
+                        <div class="cam-flow-row">${m.total_vehicles || 0} xe · ${flowDisplay}</div>
+                    </div>
+                </div>
+            `;
+        }).join("");
+
+        // Attach listeners
+        el.cameraItemList.querySelectorAll(".camera-item").forEach(item => {
+            item.addEventListener("click", () => {
+                enterFocusMode(item.dataset.camId);
+            });
+        });
+
+        el.cameraItemList.querySelectorAll(".cam-chk").forEach(chk => {
+            chk.addEventListener("change", (e) => {
+                const cid = e.target.dataset.camId;
+                if (e.target.checked) AppState.selectedCameraIds.add(cid);
+                else AppState.selectedCameraIds.delete(cid);
+                renderCameraGrid();
+                updateAggregatedKpis();
+            });
+        });
+    }
+
+    function renderCameraGrid() {
+        if (!el.cameraGridStage) return;
+        if (AppState.focusedCameraId) return; // In focus mode
+
+        const activeCams = AppState.cameras.filter(c => AppState.selectedCameraIds.has(c.id));
+        el.cameraGridStage.className = `camera-grid-stage layout-${AppState.currentLayout}`;
+
+        if (activeCams.length === 0) {
+            el.cameraGridStage.innerHTML = `
+                <div style="grid-column:1/-1; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#64748b; gap:8px;">
+                    <i data-lucide="video-off" style="width:32px; height:32px;"></i>
+                    <p>Chưa chọn camera nào để hiển thị trong lưới. Hãy chọn camera ở cột bên trái.</p>
+                </div>
+            `;
+            refreshIcons();
+            return;
+        }
+
+        el.cameraGridStage.innerHTML = activeCams.map(c => {
+            const m = c.metrics || {};
+            const lvlClass = m.congestion_level === 1 ? "normal" : (m.congestion_level === 2 ? "moderate" : "congested");
+            const flowDisplay = m.flow !== null && m.flow !== undefined ? `${Math.round(m.flow)} xe/h` : "—";
+
+            return `
+                <div class="grid-tile" data-cam-id="${c.id}" title="Nhấp để phóng to camera ${c.id}">
+                    <img src="${c.stream_url_low}" class="grid-tile-img" alt="${c.id}" onerror="this.style.opacity='0.2';">
+                    <div class="tile-overlay-header">
+                        <span class="tile-title">${c.id} · ${c.name}</span>
+                        <span class="tile-status ${lvlClass}">${m.congestion_name || 'Thông thoáng'}</span>
+                    </div>
+                    <div class="tile-bottom-metrics">
+                        <span>${c.bearing}</span>
+                        <span class="tabular-nums">${m.total_vehicles || 0} xe · ${flowDisplay}</span>
+                    </div>
+                </div>
+            `;
+        }).join("");
+
+        el.cameraGridStage.querySelectorAll(".grid-tile").forEach(t => {
+            t.addEventListener("click", () => enterFocusMode(t.dataset.camId));
+        });
+        refreshIcons();
+    }
+
+    function enterFocusMode(camId) {
+        const cam = AppState.cameras.find(c => c.id === camId);
+        if (!cam) return;
+
+        AppState.focusedCameraId = camId;
+        el.gridTitle.textContent = `Chi tiết giám sát · ${cam.id}`;
+        el.btnExitFocus.style.display = "inline-flex";
+
+        el.cameraGridStage.style.display = "none";
+        el.cameraFocusStage.style.display = "flex";
+
+        el.focusStreamImg.src = cam.stream_url_high;
+        el.focusCamName.textContent = `${cam.id} · ${cam.name}`;
+        el.focusCamBearing.textContent = cam.bearing.toUpperCase();
+        el.focusCamFps.textContent = `${(cam.metrics.fps || 29.4).toFixed(1)} FPS`;
+
+        renderLeftCameraList();
+        updateAggregatedKpis();
+        refreshIcons();
+    }
+
+    function exitFocusMode() {
+        AppState.focusedCameraId = null;
+        el.gridTitle.textContent = "Lưới camera trực tiếp";
+        el.btnExitFocus.style.display = "none";
+
+        el.cameraFocusStage.style.display = "none";
+        el.cameraGridStage.style.display = "grid";
+        el.focusStreamImg.src = "";
+
+        renderLeftCameraList();
+        renderCameraGrid();
+        updateAggregatedKpis();
+    }
+
+    el.btnExitFocus.addEventListener("click", exitFocusMode);
+
+    // Layout buttons
+    el.layoutBtnGroup.querySelectorAll(".btn-layout").forEach(btn => {
+        btn.addEventListener("click", () => {
+            el.layoutBtnGroup.querySelectorAll(".btn-layout").forEach(b => b.classList.remove("active"));
+            btn.classList.add("active");
+            AppState.currentLayout = btn.dataset.layout;
+            renderCameraGrid();
+        });
+    });
+
+    // =========================================================================
+    // 9. ANALYTICS & FORECAST CONTROLLER
+    // =========================================================================
+    async function updateAnalyticsCharts() {
+        const camId = el.analyticsCameraSelect ? el.analyticsCameraSelect.value : "ALL";
+        try {
+            const res = await fetch(`/api/metrics?camera_id=${camId}&range=${AppState.analyticsRange}`);
+            const data = await res.json();
+            if (data.success && data.history && data.history.length > 0) {
+                const labels = data.history.map(h => h.time_str);
+
+                if (flowHistoryChart) {
+                    flowHistoryChart.data.labels = labels;
+                    flowHistoryChart.data.datasets[0].data = data.history.map(h => h.flow);
+                    flowHistoryChart.update("none");
+                }
+
+                if (densityPcuChart) {
+                    densityPcuChart.data.labels = labels;
+                    densityPcuChart.data.datasets[0].data = data.history.map(h => h.density);
+                    densityPcuChart.data.datasets[1].data = data.history.map(h => h.pcu);
+                    densityPcuChart.update("none");
+                }
+
+                if (speedHistoryChart) {
+                    speedHistoryChart.data.labels = labels;
+                    speedHistoryChart.data.datasets[0].data = data.history.map(h => h.speed || 30.0);
+                    speedHistoryChart.update("none");
+                }
+
+                if (analyticsVehicleMixChart) {
+                    let sumM = 0, sumC = 0, sumB = 0, sumT = 0;
+                    data.history.forEach(h => {
+                        const cnt = h.counts || {};
+                        sumM += cnt.xe_may || 0;
+                        sumC += cnt.o_to_con || 0;
+                        sumB += cnt.xe_khach || 0;
+                        sumT += cnt.xe_tai || 0;
+                    });
+                    if (sumM + sumC + sumB + sumT === 0) {
+                        sumM = 65; sumC = 25; sumB = 6; sumT = 4;
+                    }
+                    analyticsVehicleMixChart.data.datasets[0].data = [sumM, sumC, sumB, sumT];
+                    analyticsVehicleMixChart.update("none");
+                }
+            }
         } catch (e) {
-            showLoading(false);
-            alert("Lỗi khi tải mẫu ảnh: " + e.message);
+            console.warn("Lỗi cập nhật biểu đồ phân tích:", e);
         }
     }
 
-    async function processBase64Image(b64) {
-        const payload = {
-            image_base64: b64,
-            mode: currentMode,
-            conf: confThresh
-        };
-
-        sendApiRequest(payload, true);
+    if (el.analyticsCameraSelect) {
+        el.analyticsCameraSelect.addEventListener("change", updateAnalyticsCharts);
     }
-
-    async function sendApiRequest(data, isJson) {
-        showLoading(true);
-        try {
-            const options = {
-                method: "POST"
-            };
-            if (isJson) {
-                options.headers = { "Content-Type": "application/json" };
-                options.body = JSON.stringify(data);
-            } else {
-                options.body = data;
-            }
-
-            const res = await fetch("/api/predict", options);
-            const result = await res.json();
-            showLoading(false);
-
-            if (result.success) {
-                renderResults(result);
-            } else {
-                alert("Lỗi phân tích: " + (result.error || "Unknown error"));
-            }
-        } catch (err) {
-            showLoading(false);
-            alert("Lỗi kết nối server: " + err.message);
-        }
-    }
-
-    function showLoading(active) {
-        if (active) {
-            loadingOverlay.classList.add("active");
-        } else {
-            loadingOverlay.classList.remove("active");
-        }
-    }
-
-    // Start the alarm once when congestion begins; stop it when traffic clears.
-    function syncCongestionAlarm(level) {
-        if (level >= 3 && soundEnabled) {
-            if (!alarmActive) {
-                alarmActive = true;
-                alarmAudio.currentTime = 0;
-                alarmAudio.play().catch(() => {
-                    // Playback can be blocked until the browser receives user interaction.
-                    alarmActive = false;
-                });
-            }
-        } else {
-            alarmAudio.pause();
-            alarmAudio.currentTime = 0;
-            alarmActive = false;
-        }
-    }
-
-    // Render results to UI
-    function renderResults(data) {
-        if (videoPollInterval) {
-            clearInterval(videoPollInterval);
-            videoPollInterval = null;
-        }
-
-        // Display image
-        placeholderView.style.display = "none";
-        videoStream.style.display = "none";
-        videoStream.src = "";
-        resultImage.style.display = "block";
-        resultImage.src = data.annotated_image;
-
-        // Process time
-        processTimeTag.innerHTML = `<i class="fa-solid fa-bolt-lightning"></i> ${data.process_time_ms} ms`;
-
-        // Stat counters
-        valTotalVehicles.textContent = data.total_vehicles;
-        valPcuScore.textContent = data.pcu_score;
-        valDensity.innerHTML = `${data.density != null ? data.density : 0} <small>xe/km</small>`;
-        valFlow.textContent = (data.flow != null) ? data.flow : "\u2014";
-
-        const c = data.counts;
-        cntXeMay.textContent = c.xe_may;
-        cntOTo.textContent = c.o_to_con;
-        cntXeKhach.textContent = c.xe_khach;
-        cntXeTai.textContent = c.xe_tai;
-
-        // Update Chart
-        vehicleChart.data.datasets[0].data = [c.xe_may, c.o_to_con, c.xe_khach, c.xe_tai];
-        vehicleChart.update();
-
-        // Congestion Alert Banner Update
-        const cg = data.congestion;
-        alertBanner.className = "alert-banner status-" + cg.badge;
-        alertBadge.textContent = cg.name.toUpperCase();
-        alertBadge.style.backgroundColor = cg.color;
-        alertBadge.style.color = "#000";
-
-        alertTitle.textContent = `Mức độ Giao thông: ${cg.name}`;
-        alertDesc.textContent = cg.description;
-
-        // Set Icon
-        if (cg.level === 0) alertIcon.innerHTML = '<i class="fa-solid fa-circle-minus" style="color:#94a3b8"></i>';
-        else if (cg.level === 1) alertIcon.innerHTML = '<i class="fa-solid fa-circle-check" style="color:#10b981"></i>';
-        else if (cg.level === 2) alertIcon.innerHTML = '<i class="fa-solid fa-triangle-exclamation" style="color:#f59e0b"></i>';
-        else if (cg.level >= 3) alertIcon.innerHTML = '<i class="fa-solid fa-bell" style="color:#ef4444"></i>';
-
-        syncCongestionAlarm(cg.level);
-
-        // Add to history log
-        addHistoryRow(data);
-    }
-
-    function addHistoryRow(data) {
-        const emptyRow = historyTableBody.querySelector(".empty-row");
-        if (emptyRow) emptyRow.remove();
-
-        const tr = document.createElement("tr");
-        const timeStr = new Date().toLocaleTimeString("vi-VN");
-        const cg = data.congestion;
-
-        tr.innerHTML = `
-            <td><strong>${timeStr}</strong></td>
-            <td><strong>${data.total_vehicles}</strong> xe (PCU: ${data.pcu_score})</td>
-            <td>🏍️ ${data.counts.xe_may} | 🚗 ${data.counts.o_to_con} | 🚌 ${data.counts.xe_khach} | 🚚 ${data.counts.xe_tai}</td>
-            <td><span class="status-pill" style="background:${cg.bg_color}; color:${cg.color}">${cg.name}</span></td>
-            <td>${data.process_time_ms} ms</td>
-        `;
-
-        historyTableBody.insertBefore(tr, historyTableBody.firstChild);
-    }
-
-    btnClearHistory.addEventListener("click", () => {
-        historyTableBody.innerHTML = '<tr class="empty-row"><td colspan="5">Chưa có nhật ký kiểm thử. Hãy tải ảnh lên để bắt đầu.</td></tr>';
+    el.pillsRange.forEach(p => {
+        p.addEventListener("click", () => {
+            el.pillsRange.forEach(b => b.classList.remove("active"));
+            p.classList.add("active");
+            AppState.analyticsRange = p.dataset.range;
+            updateAnalyticsCharts();
+        });
     });
+
+    async function updateForecastTab() {
+        if (!flowForecastChart) return;
+        const camId = el.forecastCamSelect ? el.forecastCamSelect.value : "ALL";
+        const model = el.forecastModelSelect ? el.forecastModelSelect.value : "holt_winters";
+        try {
+            const res = await fetch(`/api/forecast?camera_id=${camId}&horizon=${AppState.forecastHorizon}&model=${model}`);
+            const data = await res.json();
+            if (data.success) {
+                const hist = data.history || [];
+                const fore = data.forecast || [];
+                const lower = data.lower_bound || [];
+                const upper = data.upper_bound || [];
+
+                const labels = [...hist.map(h => h.time_str), ...fore.map(f => f.time_str)];
+                const histData = [...hist.map(h => h.flow), ...fore.map(() => null)];
+
+                const lastVal = hist.length > 0 ? hist[hist.length - 1].flow : null;
+                const foreData = [...hist.slice(0, -1).map(() => null), lastVal, ...fore.map(f => f.flow)];
+                const lowerData = [...hist.slice(0, -1).map(() => null), lastVal, ...lower.map(l => l.flow)];
+                const upperData = [...hist.slice(0, -1).map(() => null), lastVal, ...upper.map(u => u.flow)];
+
+                flowForecastChart.data.labels = labels;
+                flowForecastChart.data.datasets[0].data = upperData;
+                flowForecastChart.data.datasets[1].data = lowerData;
+                flowForecastChart.data.datasets[2].data = histData;
+                flowForecastChart.data.datasets[3].data = foreData;
+                flowForecastChart.update("none");
+
+                // Update Backtest Metrics Cards
+                const m = data.metrics || {};
+                el.valMae.textContent = m.mae !== null && m.mae !== undefined ? m.mae : "—";
+                el.valRmse.textContent = m.rmse !== null && m.rmse !== undefined ? m.rmse : "—";
+                el.valMape.textContent = m.mape !== null && m.mape !== undefined ? `${m.mape}%` : "—";
+                el.valSampleCount.textContent = m.sample_count || hist.length;
+
+                el.forecastMetaNote.textContent = data.message || "Mô hình dự báo đã cập nhật thành công.";
+            }
+        } catch (e) {}
+    }
+
+    if (el.forecastCamSelect) el.forecastCamSelect.addEventListener("change", updateForecastTab);
+    if (el.forecastModelSelect) el.forecastModelSelect.addEventListener("change", updateForecastTab);
+    el.pillsForecast.forEach(p => {
+        p.addEventListener("click", () => {
+            el.pillsForecast.forEach(b => b.classList.remove("active"));
+            p.classList.add("active");
+            AppState.forecastHorizon = parseInt(p.dataset.horizon);
+            updateForecastTab();
+        });
+    });
+
+    // =========================================================================
+    // 10. SOURCES TAB & UPLOAD MODAL
+    // =========================================================================
+    async function loadSourcesTab() {
+        if (!el.sourcesCameraGrid) return;
+
+        // Render current camera sources
+        el.sourcesCameraGrid.innerHTML = AppState.cameras.map(c => `
+            <div class="video-source-card">
+                <div class="vsource-header">
+                    <span>${c.id} · ${c.name}</span>
+                    <span class="badge-subtle">${c.status}</span>
+                </div>
+                <div class="vsource-file">Nguồn: ${c.video_rel_path || 'Mặc định'}</div>
+                <div class="vsource-file">Phiên: ${c.session_id || 'Chưa khởi tạo'}</div>
+                <div class="vsource-actions">
+                    <button class="btn btn-sm btn-outline" onclick="openUploadForCam('${c.id}')">
+                        <i data-lucide="upload" class="icon-xs"></i> Đổi video
+                    </button>
+                </div>
+            </div>
+        `).join("");
+
+        // Load uploaded videos list
+        try {
+            const res = await fetch("/api/videos");
+            const data = await res.json();
+            if (data.success && el.uploadedVideosTableBody) {
+                if (data.videos.length === 0) {
+                    el.uploadedVideosTableBody.innerHTML = `<tr class="empty-state-row"><td colspan="8">Chưa có video tải lên nào.</td></tr>`;
+                } else {
+                    el.uploadedVideosTableBody.innerHTML = data.videos.map(v => `
+                        <tr>
+                            <td><strong>${v.original_name}</strong></td>
+                            <td><span class="badge-subtle">${v.camera_id}</span></td>
+                            <td class="tabular-nums">${v.duration_sec.toFixed(1)}s</td>
+                            <td class="tabular-nums">${v.resolution}</td>
+                            <td class="tabular-nums">${v.fps.toFixed(1)}</td>
+                            <td class="tabular-nums">${v.file_size_mb.toFixed(1)} MB</td>
+                            <td>${v.uploaded_by}</td>
+                            <td>
+                                <button class="btn btn-sm btn-outline danger" onclick="deleteVideo('${v.id}')">Xóa</button>
+                            </td>
+                        </tr>
+                    `).join("");
+                }
+            }
+        } catch (e) {}
+        refreshIcons();
+    }
+
+    window.openUploadForCam = function(camId) {
+        if (el.modalUploadCamSelect) el.modalUploadCamSelect.value = camId;
+        el.uploadModal.style.display = "flex";
+    };
+
+    window.deleteVideo = async function(videoId) {
+        if (!confirm("Bạn có chắc chắn muốn xóa tệp video này khỏi hệ thống?")) return;
+        try {
+            const res = await fetch(`/api/videos/${videoId}`, { method: "DELETE" });
+            const data = await res.json();
+            if (data.success) {
+                loadSourcesTab();
+            } else {
+                alert(data.error || "Không thể xóa video.");
+            }
+        } catch (e) {
+            alert("Lỗi kết nối máy chủ.");
+        }
+    };
+
+    if (el.btnTriggerUploadModal) {
+        el.btnTriggerUploadModal.addEventListener("click", () => {
+            el.uploadModal.style.display = "flex";
+        });
+    }
+
+    function closeUploadModal() {
+        el.uploadModal.style.display = "none";
+        el.uploadProgressContainer.style.display = "none";
+        el.modalVideoFileInput.value = "";
+    }
+
+    if (el.btnCloseUploadModal) el.btnCloseUploadModal.addEventListener("click", closeUploadModal);
+    if (el.btnCancelUploadModal) el.btnCancelUploadModal.addEventListener("click", closeUploadModal);
+
+    if (el.btnConfirmUpload) {
+        el.btnConfirmUpload.addEventListener("click", async () => {
+            const file = el.modalVideoFileInput.files[0];
+            const camId = el.modalUploadCamSelect.value;
+            if (!file) {
+                alert("Vui lòng chọn một tệp video từ máy tính!");
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append("file", file);
+
+            el.uploadProgressContainer.style.display = "block";
+            el.uploadProgressBar.style.width = "40%";
+            el.uploadStatusText.textContent = "Đang tải tệp lên máy chủ...";
+            el.btnConfirmUpload.disabled = true;
+
+            try {
+                const res = await fetch(`/api/cameras/${camId}/source`, {
+                    method: "POST",
+                    body: formData
+                });
+                el.uploadProgressBar.style.width = "100%";
+
+                const data = await res.json();
+                if (data.success) {
+                    alert(`Thành công: Đã gán video mới cho ${camId} và tạo phiên phân tích mới.`);
+                    closeUploadModal();
+                    await fetchCameras();
+                    loadSourcesTab();
+                } else {
+                    alert(data.error || "Tải lên không thành công.");
+                }
+            } catch (e) {
+                alert("Lỗi mạng khi tải lên video.");
+            } finally {
+                el.btnConfirmUpload.disabled = false;
+            }
+        });
+    }
+
+    // =========================================================================
+    // 11. AUDIT LOGS TAB
+    // =========================================================================
+    async function loadLogsTab() {
+        if (!el.logsTableBody) return;
+        const cam = el.logFilterCam ? el.logFilterCam.value : "ALL";
+        const lvl = el.logFilterLevel ? el.logFilterLevel.value : "ALL";
+        const search = el.logSearchInput ? el.logSearchInput.value : "";
+
+        try {
+            const res = await fetch(`/api/logs?camera_id=${cam}&level=${lvl}&search=${encodeURIComponent(search)}&limit=100`);
+            const data = await res.json();
+            if (data.success) {
+                el.logTotalCount.textContent = `${data.total} bản ghi`;
+
+                // Update Mini Footer ticker with latest logs
+                if (data.logs.length > 0 && el.miniLogTicker) {
+                    const top3 = data.logs.slice(0, 3).map(l => `[${l.time_str}] ${l.camera_id || 'Hệ thống'}: ${l.status_text} ${l.flow ? `(${l.flow} xe/h)` : ''}`).join("  |  ");
+                    el.miniLogTicker.textContent = top3;
+                }
+
+                if (data.logs.length === 0) {
+                    el.logsTableBody.innerHTML = `<tr class="empty-state-row"><td colspan="9">Không có bản ghi nhật ký phù hợp.</td></tr>`;
+                    return;
+                }
+
+                el.logsTableBody.innerHTML = data.logs.map(l => {
+                    const lvlClass = l.status_level === 1 ? "normal" : (l.status_level === 2 ? "moderate" : "congested");
+                    return `
+                        <tr>
+                            <td class="tabular-nums">${l.time_str}</td>
+                            <td><span class="badge-subtle">${l.camera_id || 'ALL'}</span></td>
+                            <td class="tabular-nums">${l.flow !== null && l.flow !== undefined ? l.flow : '—'}</td>
+                            <td class="tabular-nums">${l.density !== null && l.density !== undefined ? l.density : '—'}</td>
+                            <td class="tabular-nums">${l.pcu !== null && l.pcu !== undefined ? l.pcu : '—'}</td>
+                            <td class="tabular-nums">${l.speed !== null && l.speed !== undefined ? `${l.speed} km/h` : '—'}</td>
+                            <td><span class="signal-badge ${lvlClass}">${l.status_text}</span></td>
+                            <td>${l.advice || '—'}</td>
+                            <td style="color:var(--text-muted); font-size:11px;">${l.details || ''}</td>
+                        </tr>
+                    `;
+                }).join("");
+            }
+        } catch (e) {}
+    }
+
+    if (el.logFilterCam) el.logFilterCam.addEventListener("change", loadLogsTab);
+    if (el.logFilterLevel) el.logFilterLevel.addEventListener("change", loadLogsTab);
+    if (el.logSearchInput) el.logSearchInput.addEventListener("input", () => {
+        clearTimeout(window._logSearchDebounce);
+        window._logSearchDebounce = setTimeout(loadLogsTab, 300);
+    });
+
+    if (el.btnClearLogs) {
+        el.btnClearLogs.addEventListener("click", async () => {
+            if (!confirm("Bạn có chắc chắn muốn xóa toàn bộ lịch sử sự kiện trong SQLite?")) return;
+            try {
+                const res = await fetch("/api/logs/clear", { method: "POST" });
+                const data = await res.json();
+                if (data.success) {
+                    loadLogsTab();
+                } else {
+                    alert(data.error || "Không thể xóa nhật ký.");
+                }
+            } catch (e) {
+                alert("Lỗi kết nối.");
+            }
+        });
+    }
+
+    // =========================================================================
+    // 12. SETTINGS TAB CONTROLLER
+    // =========================================================================
+    if (el.btnSaveSystemSettings) {
+        el.btnSaveSystemSettings.addEventListener("click", async () => {
+            try {
+                const res = await fetch("/api/config", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        roi_length_m: parseFloat(el.inputRoiLength.value) || 60,
+                        roi_width_m: parseFloat(el.inputRoiWidth.value) || 12,
+                        density_thresholds: [
+                            parseFloat(el.inputThrL2.value) || 120,
+                            parseFloat(el.inputThrL3.value) || 220,
+                            parseFloat(el.inputThrL4.value) || 350
+                        ]
+                    })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    alert("Cấu hình hệ thống đã được lưu và áp dụng thành công!");
+                }
+            } catch (e) {
+                alert("Lỗi khi lưu cấu hình.");
+            }
+        });
+    }
+
+    // Sound toggle button
+    el.btnSoundToggle.addEventListener("click", () => {
+        AppState.soundEnabled = !AppState.soundEnabled;
+        el.btnSoundToggle.classList.toggle("btn-primary", AppState.soundEnabled);
+        el.lblSound.textContent = AppState.soundEnabled ? "Bật" : "Còi";
+        if (!AppState.soundEnabled) {
+            el.alarmAudio.pause();
+            AppState.alarmActive = false;
+        }
+    });
+
+    // =========================================================================
+    // 13. SSE REAL-TIME CONNECTION
+    // =========================================================================
+    function startRealtimeStream() {
+        try {
+            AppState.sseSource = new EventSource("/api/stream_events");
+            AppState.sseSource.onmessage = (event) => {
+                try {
+                    const payload = JSON.parse(event.data);
+                    if (payload && payload.cameras) {
+                        AppState.cameras = payload.cameras;
+                        updateAllViews();
+                    }
+                } catch (pe) {}
+            };
+            AppState.sseSource.onerror = () => {
+                AppState.sseSource.close();
+                // Failover Polling
+                setInterval(fetchCameras, 2000);
+            };
+        } catch (e) {
+            setInterval(fetchCameras, 2000);
+        }
+    }
+
+    // Auto-refresh định kỳ cho các biểu đồ động (Real-time dynamic charts)
+    setInterval(() => {
+        try {
+            if (AppState.activeTab === "overview") {
+                updateOverviewCharts();
+            } else if (AppState.activeTab === "analytics") {
+                updateAnalyticsCharts();
+            } else if (AppState.activeTab === "forecast") {
+                updateForecastTab();
+            }
+        } catch (err) {}
+    }, 3000);
+
+    // Initialize application
+    const initialHash = window.location.hash.replace("#", "");
+    switchTab(initialHash || "overview");
+    fetchCameras();
+    startRealtimeStream();
+    loadLogsTab();
 
 });

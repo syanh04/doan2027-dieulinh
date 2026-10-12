@@ -36,34 +36,38 @@ DETECTION_DATASET_DIR = DATASETS_DIR / "vietnam_traffic"
 # ---------------------------------------------------------------------------
 # TRỌNG SỐ MÔ HÌNH
 # ---------------------------------------------------------------------------
-CLS_WEIGHTS_PATH = (
-    RUNS_DIR / "classify" / "deep_train_results" / "yolov8s-cls_100ep" / "weights" / "best.pt"
-)
+def resolve_cls_weights():
+    """Tìm trọng số phân loại: ưu tiên biến môi trường CLS_MODEL_PATH, sau đó file mặc định."""
+    custom_cls = os.environ.get("CLS_MODEL_PATH") or os.environ.get("CUSTOM_CLS_PATH")
+    if custom_cls and os.path.exists(custom_cls):
+        return Path(custom_cls)
+    default_cls = RUNS_DIR / "classify" / "deep_train_results" / "yolov8s-cls_100ep" / "weights" / "best.pt"
+    if default_cls.exists():
+        return default_cls
+    return default_cls
 
 
 def resolve_det_weights():
-    """Tìm trọng số detection ưu tiên yolov8s.pt, không có thì yolov8n.pt."""
-    for name in ("yolov8s.pt", "yolov8n.pt"):
+    """Tìm trọng số detection: ưu tiên biến môi trường CUSTOM_MODEL_PATH / DET_MODEL_PATH, sau đó file trong workspace."""
+    custom_det = os.environ.get("CUSTOM_MODEL_PATH") or os.environ.get("DET_MODEL_PATH") or os.environ.get("YOLO_MODEL_PATH")
+    if custom_det and os.path.exists(custom_det):
+        return Path(custom_det)
+
+    for name in ("yolov8s.pt", "yolov8n.pt", "yolov8m.pt", "best.pt"):
         candidate = WORKSPACE_DIR / name
         if candidate.exists():
             return candidate
+
     return WORKSPACE_DIR / "yolov8s.pt"
 
 
-DET_WEIGHTS_PATH = resolve_det_weights()
-
-# ---------------------------------------------------------------------------
-# NẠP .env (không bắt buộc phải cài python-dotenv)
-# ---------------------------------------------------------------------------
-ENV_FILE = WORKSPACE_DIR / ".env"
-
-
+# Load .env trước để đọc biến cấu hình model
 def load_dotenv(env_file=None):
     """
     Nạp biến từ file .env vào os.environ (không ghi đè biến đã tồn tại).
     Dùng python-dotenv nếu có, tự fallback sang parser đơn giản nếu không.
     """
-    path = Path(env_file) if env_file else ENV_FILE
+    path = Path(env_file) if env_file else (WORKSPACE_DIR / ".env")
     if not path.exists():
         return False
 
@@ -74,7 +78,6 @@ def load_dotenv(env_file=None):
     except ImportError:
         pass
 
-    # Fallback: parser tự viết, hỗ trợ KEY=VALUE và comment bắt đầu bằng '#'
     for raw_line in path.read_text(encoding="utf-8").splitlines():
         line = raw_line.strip()
         if not line or line.startswith("#") or "=" not in line:
@@ -87,6 +90,13 @@ def load_dotenv(env_file=None):
 
 
 load_dotenv()
+
+CLS_WEIGHTS_PATH = resolve_cls_weights()
+DET_WEIGHTS_PATH = resolve_det_weights()
+
+# ---------------------------------------------------------------------------
+# NẠP .env hoàn tất
+# ---------------------------------------------------------------------------
 
 
 # ---------------------------------------------------------------------------
