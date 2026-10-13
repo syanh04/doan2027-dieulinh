@@ -24,13 +24,13 @@ from config import (
     DET_RECALL_PASS, DET_RECALL_CONF, DET_RECALL_IMGSZ, DET_RECALL_PAD, DET_MERGE_IOU,
 )
 
-from traffic_db import (
+from core.traffic_db import (
     get_camera_history, record_minute_metric, authenticate_user,
     query_audit_logs, count_audit_logs, clear_audit_logs, add_audit_log,
     register_uploaded_video, list_uploaded_videos, get_uploaded_video, delete_uploaded_video
 )
-from forecaster import forecaster
-from camera_manager import camera_manager
+from core.forecaster import forecaster
+from core.camera_manager import camera_manager
 
 app = Flask(
     __name__,

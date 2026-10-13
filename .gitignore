@@ -30,6 +30,7 @@ _scene_cache.txt
 _probe/
 _chk/
 _*.py
+!**/__init__.py
 _*.png
 _*.jpg
 _*.jpeg
