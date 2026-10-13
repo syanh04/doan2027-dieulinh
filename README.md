@@ -39,11 +39,18 @@ doan2027-dieulinh/
 │   │   └── lucide.min.js      # Bộ icon Lucide SVG self-hosted
 │   └── samples/               # Video CCTV mẫu các nút giao Hà Nội & ảnh kiểm thử
 │
+├── training/                  # [AI TRAINING PIPELINE] Quy trình huấn luyện mô hình YOLOv8
+│   ├── README.md              # Hướng dẫn chi tiết pipeline huấn luyện
+│   ├── 1_clean_data.py        # Làm sạch và lọc nhãn dữ liệu
+│   ├── 2_split_data.py        # Chia tập Train / Val / Test
+│   ├── 3_survey_data.py       # Khảo sát phân bố bounding box và lớp xe
+│   ├── 4_train_model.py       # Huấn luyện mô hình YOLOv8
+│   └── pipeline.py            # Chạy tự động chuỗi huấn luyện từ 1 -> 4
+│
 ├── notebooks/                 # [RESEARCH] Jupyter Notebook nghiên cứu
 │   └── Traffic_Congestion_Warning.ipynb   # Khảo sát dữ liệu, phân loại xe và huấn luyện
 │
 ├── scripts/                   # [TOOLS & PIPELINES] Tiện ích dữ liệu & huấn luyện
-│   ├── __init__.py
 │   ├── make_test_video.py     # Tạo video thử nghiệm đường phố
 │   ├── create_sample_video.py # Sinh video mẫu giả lập
 │   ├── diag_video.py          # Kiểm tra codec, FPS, độ phân giải video
@@ -53,12 +60,16 @@ doan2027-dieulinh/
 │   ├── run_training.py        # Script chạy huấn luyện YOLOv8
 │   └── gpu_setup.py           # Kiểm tra CUDA & VRAM card đồ họa
 │
-└── tests/                     # [TESTS] Kiểm thử tự động
-    ├── __init__.py
-    ├── run_browser_test.py    # Kiểm thử tự động toàn diện bằng Playwright (chụp ảnh & quay video)
-    ├── test_video.py          # Kiểm thử pipeline đọc video & YOLOv8
-    ├── test_external_image.py # Test nhận diện trên hình ảnh ngoài
-    └── test_external_video.py # Test nhận diện trên video ngoài
+├── tests/                     # [TESTS] Kiểm thử tự động
+│   ├── run_browser_test.py    # Kiểm thử tự động toàn diện bằng Playwright (chụp ảnh & quay video)
+│   ├── test_video.py          # Kiểm thử pipeline đọc video & YOLOv8
+│   ├── test_external_image.py # Test nhận diện trên hình ảnh ngoài
+│   └── test_external_video.py # Test nhận diện trên video ngoài
+│
+└── docker/                    # [DEPLOYMENT] Cấu hình Docker & Containerization
+    ├── Dockerfile             # Build image ứng dụng ITS
+    ├── docker-compose.yml     # Khởi chạy dịch vụ container
+    └── .dockerignore          # Bỏ qua tệp khi build Docker image
 ```
 
 ---
