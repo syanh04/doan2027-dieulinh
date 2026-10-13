@@ -22,7 +22,7 @@ from config import (
     ROI_REAL_WIDTH_M, ROI_REAL_LENGTH_M,
     DENSITY_THRESHOLDS, OCCUPANCY_THRESHOLDS, PCU_WEIGHTS
 )
-from core.traffic_db import (
+from backend.core.traffic_db import (
     record_minute_metric, create_analysis_session, close_analysis_session, add_audit_log
 )
 
