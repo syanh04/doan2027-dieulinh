@@ -24,9 +24,10 @@ DATASETS_DIR = WORKSPACE_DIR / "datasets"
 RUNS_DIR = WORKSPACE_DIR / "runs"
 UPLOAD_FOLDER = WORKSPACE_DIR / "uploads"
 WEIGHTS_DIR = WORKSPACE_DIR / "weights"
-STATIC_DIR = WORKSPACE_DIR / "static"
+FRONTEND_DIR = WORKSPACE_DIR / "frontend"
+STATIC_DIR = FRONTEND_DIR / "static" if (FRONTEND_DIR / "static").exists() else WORKSPACE_DIR / "static"
 SAMPLES_DIR = STATIC_DIR / "samples"
-TEMPLATES_DIR = WORKSPACE_DIR / "templates"
+TEMPLATES_DIR = FRONTEND_DIR / "templates" if (FRONTEND_DIR / "templates").exists() else WORKSPACE_DIR / "templates"
 SURVEY_RESULTS_DIR = WORKSPACE_DIR / "survey_results"
 
 # Dataset dùng cho train / test

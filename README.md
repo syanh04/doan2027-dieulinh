@@ -6,38 +6,41 @@ Hệ thống giám sát, phân tích và dự báo lưu lượng giao thông đa
 
 ## 📁 Cấu trúc thư mục dự án (Modular Architecture)
 
-Dự án được tái cấu trúc theo mô hình phân lớp rõ ràng, chuyên nghiệp, giúp dễ dàng mở rộng và định vị lỗi (debug/fix bug):
+Dự án được phân chia rõ ràng theo 2 khối **Backend** và **Frontend** chuyên biệt, giúp dự án chuẩn mực, chuyên nghiệp và cực kỳ dễ bảo trì/fix bug:
 
 ```text
 doan2027-dieulinh/
 ├── app.py                     # Entry point chính khởi chạy Flask Web Server & API
-├── config.py                  # Cấu hình hệ thống (ROI, ngưỡng ùn tắc, hằng số PCU)
+├── config.py                  # Cấu hình tập trung toàn hệ thống (ROI, thresholds, paths)
 ├── requirements.txt           # Danh sách các thư viện Python phụ thuộc
 ├── run.bat                    # Script khởi chạy nhanh 1-chạm trên Windows
 ├── .env.example               # Mẫu thiết lập biến môi trường
 ├── .gitignore                 # Bỏ qua tệp rác, virtualenv và trọng số nặng
 ├── README.md                  # Hướng dẫn chi tiết & tài liệu kiến trúc dự án
 │
-├── core/                      # [CORE DOMAIN] Mã nguồn nghiệp vụ cốt lõi
-│   ├── __init__.py            # Khởi tạo core package
-│   ├── camera_manager.py      # Đa luồng CameraWorker, nhận diện YOLOv8 & ByteTrack, tính Q, K, V
-│   ├── forecaster.py          # Thuật toán dự báo lưu lượng tương lai & đánh giá Backtest (MAE, RMSE, MAPE)
-│   ├── traffic_db.py          # Quản trị SQLite, xác thực người dùng, phân quyền, chuỗi thời gian
-│   └── alerts.py              # Động cơ phân tích cảnh báo ùn tắc & đề xuất chu kỳ đèn
+├── frontend/                  # [FRONTEND LAYER] Toàn bộ mã nguồn & giao diện người dùng
+│   ├── README.md              # Hướng dẫn chi tiết cấu trúc Frontend
+│   ├── templates/             # Jinja2 HTML templates
+│   │   ├── index.html         # Bảng điều khiển trung tâm 7 Tabs (Tổng quan, Live, Phân tích, Dự báo...)
+│   │   └── login.html         # Màn hình đăng nhập bảo mật (Dark SaaS theme)
+│   └── static/                # Tệp tĩnh frontend (CSS, JavaScript, Icons, Images)
+│       ├── css/
+│       │   ├── style.css      # Bố cục giao diện, lưới camera, card KPI, bảng biểu
+│       │   └── tokens.css     # Design tokens (Hệ màu sắc, Dark/Light theme, Spacing 8px)
+│       ├── js/
+│       │   ├── main.js        # Controller frontend (chuyển tab, SSE stream, biểu đồ động Chart.js)
+│       │   ├── chart.min.js   # Thư viện Chart.js self-hosted
+│       │   └── lucide.min.js  # Bộ icon Lucide SVG self-hosted
+│       └── samples/           # Video CCTV mẫu các nút giao Hà Nội & ảnh kiểm thử
 │
-├── templates/                 # [JINJA2 TEMPLATES] Giao diện HTML
-│   ├── index.html             # Bảng điều khiển trung tâm 7 Tabs (Tổng quan, Live, Phân tích, Dự báo...)
-│   └── login.html             # Màn hình đăng nhập bảo mật (Dark SaaS theme)
-│
-├── static/                    # [ASSETS] Tệp tĩnh frontend
-│   ├── css/
-│   │   ├── style.css          # Bố cục giao diện, lưới camera, card KPI, bảng biểu
-│   │   └── tokens.css         # Design tokens (Hệ màu sắc, Dark/Light theme, Spacing 8px)
-│   ├── js/
-│   │   ├── main.js            # Frontend controller (chuyển tab, SSE stream, biểu đồ động Chart.js)
-│   │   ├── chart.min.js       # Thư viện Chart.js self-hosted
-│   │   └── lucide.min.js      # Bộ icon Lucide SVG self-hosted
-│   └── samples/               # Video CCTV mẫu các nút giao Hà Nội & ảnh kiểm thử
+├── backend/                   # [BACKEND LAYER] Toàn bộ nghiệp vụ, thuật toán AI & CSDL
+│   ├── README.md              # Hướng dẫn chi tiết cấu trúc Backend
+│   ├── __init__.py            # Khởi tạo backend package
+│   └── core/                  # Module nghiệp vụ lõi (được shim đồng thời ra core/ ở root)
+│       ├── camera_manager.py  # Đa luồng CameraWorker, nhận diện YOLOv8 & ByteTrack, tính Q, K, V
+│       ├── forecaster.py      # Thuật toán dự báo chuỗi thời gian & đánh giá Backtest (MAE, RMSE, MAPE)
+│       ├── traffic_db.py      # Quản trị SQLite, xác thực người dùng, phân quyền, chuỗi thời gian
+│       └── alerts.py          # Động cơ phân tích cảnh báo ùn tắc & đề xuất chu kỳ đèn
 │
 ├── training/                  # [AI TRAINING PIPELINE] Quy trình huấn luyện mô hình YOLOv8
 │   ├── README.md              # Hướng dẫn chi tiết pipeline huấn luyện
@@ -50,7 +53,7 @@ doan2027-dieulinh/
 ├── notebooks/                 # [RESEARCH] Jupyter Notebook nghiên cứu
 │   └── Traffic_Congestion_Warning.ipynb   # Khảo sát dữ liệu, phân loại xe và huấn luyện
 │
-├── scripts/                   # [TOOLS & PIPELINES] Tiện ích dữ liệu & huấn luyện
+├── scripts/                   # [TOOLS & UTILITIES] Tiện ích dữ liệu & kiểm tra phần cứng
 │   ├── make_test_video.py     # Tạo video thử nghiệm đường phố
 │   ├── create_sample_video.py # Sinh video mẫu giả lập
 │   ├── diag_video.py          # Kiểm tra codec, FPS, độ phân giải video
@@ -80,12 +83,13 @@ Khi phát sinh lỗi, bạn có thể định vị chính xác vị trí file c�
 
 | Hiện tượng / Mục tiêu sửa đổi | Tệp cần mở để sửa | Ghi chú kỹ thuật |
 | :--- | :--- | :--- |
-| **Thêm camera mới / Sửa góc quay ROI / Sửa đếm xe** | `core/camera_manager.py` | Tìm `stations_config` để đổi RTSP/file video hoặc chỉnh tọa độ `roi_norm`. |
-| **Sửa thuật toán dự báo / Thêm mô hình LSTM / Đổi sai số** | `core/forecaster.py` | Sửa phương thức `predict()` và `_calculate_backtest_metrics()`. |
-| **Quản lý tài khoản / Thêm bảng CSDL / Lưu chỉ số** | `core/traffic_db.py` | Quản lý kết nối SQLite `traffic_metrics.db`, xác thực mật khẩu. |
-| **Đổi màu sắc / Tăng giảm cỡ chữ / Chỉnh kích thước khung video** | `static/css/tokens.css`<br>`static/css/style.css` | `tokens.css` quản lý biến màu Dark/Light; `style.css` quản lý layout lưới camera. |
-| **Sửa biểu đồ động / Thêm tab mới / Sửa lỗi click giao diện** | `static/js/main.js` | Hàm `switchTab()`, `initAllCharts()`, và bộ timer `setInterval()`. |
-| **Thêm route API mới cho Flask** | `app.py` | Quản lý các endpoint RESTful và luồng stream MJPEG. |
+| **Thêm camera mới / Sửa góc quay ROI / Sửa đếm xe** | `backend/core/camera_manager.py` | Tìm `stations_config` để đổi RTSP/file video hoặc chỉnh tọa độ `roi_norm`. |
+| **Sửa thuật toán dự báo / Thêm mô hình LSTM / Đổi sai số** | `backend/core/forecaster.py` | Sửa phương thức `predict()` và `_calculate_backtest_metrics()`. |
+| **Quản lý tài khoản / Thêm bảng CSDL / Lưu chỉ số** | `backend/core/traffic_db.py` | Quản lý kết nối SQLite `traffic_metrics.db`, xác thực mật khẩu. |
+| **Đổi giao diện HTML / Thêm nút bấm / Sửa form** | `frontend/templates/index.html`<br>`frontend/templates/login.html` | Template Jinja2 giao diện người dùng. |
+| **Đổi màu sắc / Tăng giảm cỡ chữ / Chỉnh kích thước khung video** | `frontend/static/css/tokens.css`<br>`frontend/static/css/style.css` | `tokens.css` quản lý biến màu Dark/Light; `style.css` quản lý layout lưới camera. |
+| **Sửa biểu đồ động / Thêm tab mới / Sửa lỗi click giao diện** | `frontend/static/js/main.js` | Hàm `switchTab()`, `initAllCharts()`, và bộ timer `setInterval()`. |
+| **Thêm route API mới cho Flask / Quản lý phân quyền** | `app.py` | Quản lý các endpoint RESTful và luồng stream MJPEG. |
 
 ---
 

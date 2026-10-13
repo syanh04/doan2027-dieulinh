@@ -22,6 +22,7 @@ from config import (
     VN_FONT_PATHS,
     DET_IMGSZ, DET_IOU, DET_MAX_DET, DET_AGNOSTIC_NMS,
     DET_RECALL_PASS, DET_RECALL_CONF, DET_RECALL_IMGSZ, DET_RECALL_PAD, DET_MERGE_IOU,
+    TEMPLATES_DIR, STATIC_DIR
 )
 
 from core.traffic_db import (
@@ -34,8 +35,8 @@ from core.camera_manager import camera_manager
 
 app = Flask(
     __name__,
-    template_folder=str(WORKSPACE_DIR / "templates"),
-    static_folder=str(WORKSPACE_DIR / "static"),
+    template_folder=str(TEMPLATES_DIR),
+    static_folder=str(STATIC_DIR),
 )
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "trafficvision-enterprise-secure-key-2026")
 

@@ -14,6 +14,8 @@ uploads/
 # Video mẫu được sinh tự động bởi create_sample_video.py
 static/samples/*.mp4
 static/samples/*.webm
+frontend/static/samples/*.mp4
+frontend/static/samples/*.webm
 
 __pycache__/
 *.py[cod]

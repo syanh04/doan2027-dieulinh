@@ -40,14 +40,31 @@ COCO_VEHICLES = {
 }
 
 
+def resolve_video_path(rel_path):
+    if not rel_path:
+        return ""
+    if os.path.isabs(rel_path) and os.path.exists(rel_path):
+        return rel_path
+    candidates = [
+        os.path.join(str(WORKSPACE_DIR), rel_path),
+        os.path.join(str(WORKSPACE_DIR), "frontend", rel_path),
+        os.path.join(str(STATIC_DIR), os.path.basename(rel_path)),
+        os.path.join(str(SAMPLES_DIR), os.path.basename(rel_path))
+    ]
+    for c in candidates:
+        if os.path.exists(c):
+            return c
+    return os.path.join(str(WORKSPACE_DIR), rel_path)
+
+
 class CameraWorker:
-    def __init__(self, cam_id, name, district, bearing, video_rel_path, default_roi, length_m=60.0, width_m=12.0, det_model=None):
+    def __init__(self, cam_id, name, district, bearing, video_rel_path, default_roi, length_m=50.0, width_m=12.0, det_model=None):
         self.cam_id = cam_id
         self.name = name
         self.district = district
         self.bearing = bearing
         self.video_rel_path = video_rel_path
-        self.video_path = os.path.join(str(WORKSPACE_DIR), video_rel_path) if not os.path.isabs(video_rel_path) else video_rel_path
+        self.video_path = resolve_video_path(video_rel_path)
         self.roi_norm = np.array(default_roi, dtype=np.float32)
         self.length_m = float(length_m)
         self.width_m = float(width_m)
@@ -152,7 +169,7 @@ class CameraWorker:
         """Doi video cho camera: dung phien cu, reset metrics, tao phien moi"""
         self.stop()
         self.video_rel_path = new_video_path
-        self.video_path = os.path.join(str(WORKSPACE_DIR), new_video_path) if not os.path.isabs(new_video_path) else new_video_path
+        self.video_path = resolve_video_path(new_video_path)
         self.source_type = source_type
         
         # Reset toan bo metrics ve trang thai thu thap ban dau
