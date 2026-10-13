@@ -1,0 +1,21 @@
+{
+  "total_images": 12000,
+  "imbalance_ratio": 1.0,
+  "splits": [
+    "test",
+    "train",
+    "val"
+  ],
+  "classes": [
+    "0_Xe_may",
+    "1_O_to_con",
+    "2_Xe_khach",
+    "3_Xe_tai"
+  ],
+  "resolution_stats": {
+    "Width (Min - Max - Mean)": "640 - 640 - 640.0 px",
+    "Height (Min - Max - Mean)": "640 - 640 - 640.0 px",
+    "Aspect Ratio (Mean)": "1.00",
+    "File Size Trung bình": "78.9 KB"
+  }
+}

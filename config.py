@@ -144,6 +144,7 @@ PCU_WEIGHTS = {
     "o_to_con": _PCU_ENV[1] if len(_PCU_ENV) > 1 else _PCU_DEFAULT[1],
     "xe_khach": _PCU_ENV[2] if len(_PCU_ENV) > 2 else _PCU_DEFAULT[2],
     "xe_tai": _PCU_ENV[3] if len(_PCU_ENV) > 3 else _PCU_DEFAULT[3],
+    "xe_dap": 0.2,
 }
 
 # Font TTF dùng vẽ chữ tiếng Việt có dấu lên frame (PIL). Ưu tiên font hệ

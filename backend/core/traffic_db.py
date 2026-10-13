@@ -284,59 +284,10 @@ def create_analysis_session(camera_id, source_type, source_path, total_frames=0,
 
 def bootstrap_session_metrics(camera_id, session_id):
     """
-    Khởi tạo 15 mốc dữ liệu ban đầu khớp với đặc thù lưu lượng của từng trạm camera.
-    Giúp biểu đồ ngay lập tức có chuỗi thời gian và mô hình dự báo đủ dữ liệu vận hành.
+    Không chèn dữ liệu mẫu giả định.
+    Toàn bộ dữ liệu được đo lường và ghi nhận trực tiếp từ camera_worker thời gian thực.
     """
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM camera_metrics WHERE session_id = ?", (session_id,))
-        if cursor.fetchone()[0] > 0:
-            conn.close()
-            return
-
-        base_profiles = {
-            "CAM-01": {"flow": 560, "density": 24.5, "pcu": 19.0, "speed": 34.0, "m": 35, "c": 6, "b": 1, "t": 1},
-            "CAM-02": {"flow": 380, "density": 18.0, "pcu": 14.5, "speed": 28.5, "m": 22, "c": 5, "b": 1, "t": 0},
-            "CAM-03": {"flow": 980, "density": 36.0, "pcu": 38.0, "speed": 46.0, "m": 42, "c": 18, "b": 3, "t": 2},
-            "CAM-04": {"flow": 1150, "density": 48.0, "pcu": 46.5, "speed": 24.0, "m": 60, "c": 15, "b": 4, "t": 3},
-        }
-        profile = base_profiles.get(camera_id, {"flow": 600, "density": 25.0, "pcu": 20.0, "speed": 30.0, "m": 30, "c": 8, "b": 1, "t": 1})
-
-        now_sec = int(time.time())
-        import random
-        # Tạo 15 mốc lùi về trước mỗi mốc 60 giây
-        for i in range(14, -1, -1):
-            t_sec = now_sec - (i * 60)
-            time_str = time.strftime("%H:%M", time.localtime(t_sec))
-            # Biến thiên tự nhiên ±6%
-            factor = 1.0 + (random.uniform(-0.06, 0.06))
-            v_time_sec = float((14 - i) * 60)
-
-            c_flow = round(profile["flow"] * factor, 1)
-            c_dens = round(profile["density"] * factor, 1)
-            c_pcu = round(profile["pcu"] * factor, 1)
-            c_spd = round(profile["speed"] * (2.0 - factor), 1)
-
-            counts = {
-                "xe_may": max(1, int(profile["m"] * factor)),
-                "o_to_con": max(0, int(profile["c"] * factor)),
-                "xe_khach": max(0, int(profile["b"] * factor)),
-                "xe_tai": max(0, int(profile["t"] * factor))
-            }
-
-            cursor.execute("""
-                INSERT INTO camera_metrics (camera_id, session_id, video_time_sec, timestamp, time_str, count_by_class, pcu, density, flow, avg_speed)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                camera_id, session_id, v_time_sec, t_sec, time_str,
-                json.dumps(counts), c_pcu, c_dens, c_flow, c_spd
-            ))
-
-        conn.commit()
-        conn.close()
-    except Exception as e:
-        print(f"[DB BOOTSTRAP] Lỗi bootstrap metrics: {e}")
+    return
 
 
 def get_active_session_id(camera_id):
@@ -369,10 +320,7 @@ def record_camera_metric(camera_id, session_id, video_time_sec, counts, pcu, den
     """
     try:
         now_sec = int(time.time())
-        # Thời gian hiển thị lấy theo timeline của video (phút:giây) hoặc giờ thực
-        m = int(video_time_sec // 60)
-        s = int(video_time_sec % 60)
-        time_str = f"{m:02d}:{s:02d}"
+        time_str = time.strftime("%H:%M:%S", time.localtime(now_sec))
 
         conn = get_connection()
         cursor = conn.cursor()

@@ -87,10 +87,12 @@ document.addEventListener("DOMContentLoaded", () => {
         ovPctCar: document.getElementById("ovPctCar"),
         ovPctBus: document.getElementById("ovPctBus"),
         ovPctTruck: document.getElementById("ovPctTruck"),
+        ovPctBicycle: document.getElementById("ovPctBicycle"),
         ovBarMotorcycle: document.getElementById("ovBarMotorcycle"),
         ovBarCar: document.getElementById("ovBarCar"),
         ovBarBus: document.getElementById("ovBarBus"),
         ovBarTruck: document.getElementById("ovBarTruck"),
+        ovBarBicycle: document.getElementById("ovBarBicycle"),
 
         // Live Tab - Left Sidebar
         cameraItemList: document.getElementById("cameraItemList"),
@@ -126,10 +128,12 @@ document.addEventListener("DOMContentLoaded", () => {
         pctCar: document.getElementById("pctCar"),
         pctBus: document.getElementById("pctBus"),
         pctTruck: document.getElementById("pctTruck"),
+        pctBicycle: document.getElementById("pctBicycle"),
         barMotorcycle: document.getElementById("barMotorcycle"),
         barCar: document.getElementById("barCar"),
         barBus: document.getElementById("barBus"),
         barTruck: document.getElementById("barTruck"),
+        barBicycle: document.getElementById("barBicycle"),
         signalStatusBadge: document.getElementById("signalStatusBadge"),
         signalTimer: document.getElementById("signalTimer"),
         signalAdviceText: document.getElementById("signalAdviceText"),
@@ -564,10 +568,10 @@ document.addEventListener("DOMContentLoaded", () => {
             analyticsVehicleMixChart = new Chart(ctxVm.getContext("2d"), {
                 type: "doughnut",
                 data: {
-                    labels: ["Xe máy", "Ô tô con", "Xe khách", "Xe tải"],
+                    labels: ["Xe máy", "Ô tô con", "Xe khách", "Xe tải", "Xe đạp"],
                     datasets: [{
-                        data: [65, 25, 6, 4],
-                        backgroundColor: ["#06b6d4", "#f59e0b", "#3b82f6", "#ef4444"],
+                        data: [60, 25, 6, 4, 5],
+                        backgroundColor: ["#06b6d4", "#f59e0b", "#3b82f6", "#ef4444", "#22c55e"],
                         borderWidth: 1,
                         borderColor: isDark ? "#161a21" : "#ffffff"
                     }]
@@ -613,7 +617,20 @@ document.addEventListener("DOMContentLoaded", () => {
         if (AppState.activeTab === "overview") {
             renderOverviewStationCards();
         } else if (AppState.activeTab === "live") {
-            renderCameraGrid();
+            if (AppState.focusedCameraId) {
+                const cam = AppState.cameras.find(c => c.id === AppState.focusedCameraId);
+                if (cam) {
+                    const m = cam.metrics || {};
+                    const flowDisplay = m.flow !== null && m.flow !== undefined ? `${Math.round(m.flow)} xe/h` : "—";
+                    if (el.focusCamFps) el.focusCamFps.textContent = `${(m.fps || 25.0).toFixed(1)} FPS`;
+                    const focusVeh = document.getElementById("focusBottomVehicles");
+                    if (focusVeh) focusVeh.textContent = `${m.total_vehicles || 0} xe trong ngã tư`;
+                    const focusDet = document.getElementById("focusBottomDetails");
+                    if (focusDet) focusDet.textContent = `PCU: ${(m.pcu || 0).toFixed(1)} · Mật độ: ${(m.density || 0).toFixed(1)} xe/km · Lưu lượng: ${flowDisplay} · Vận tốc: ${m.speed || 0} km/h`;
+                }
+            } else {
+                renderCameraGrid();
+            }
             renderLeftCameraList();
         }
     }
@@ -624,7 +641,7 @@ document.addEventListener("DOMContentLoaded", () => {
         let pcuSum = 0;
         let speedSum = 0, speedCount = 0;
         let totalVehInRoi = 0;
-        let counts = { xe_may: 0, o_to_con: 0, xe_khach: 0, xe_tai: 0 };
+        let counts = { xe_may: 0, o_to_con: 0, xe_khach: 0, xe_tai: 0, xe_dap: 0 };
 
         let activeCams = [];
         if (AppState.focusedCameraId) {
@@ -657,6 +674,7 @@ document.addEventListener("DOMContentLoaded", () => {
             counts.o_to_con += (mc.o_to_con || 0);
             counts.xe_khach += (mc.xe_khach || 0);
             counts.xe_tai += (mc.xe_tai || 0);
+            counts.xe_dap += (mc.xe_dap || 0);
         });
 
         // 1. Cập nhật Overview Tab
@@ -671,45 +689,52 @@ document.addEventListener("DOMContentLoaded", () => {
         el.kpiSpeed.textContent = speedCount > 0 ? Math.round(speedSum / speedCount) : "—";
 
         // 3. Cơ cấu phương tiện - KHÔNG CHIA CHO 0 KHI 0 XE
-        const totalVeh = (counts.xe_may + counts.o_to_con + counts.xe_khach + counts.xe_tai);
-        let pMotor = 0, pCar = 0, pBus = 0, pTruck = 0;
+        const totalVeh = (counts.xe_may + counts.o_to_con + counts.xe_khach + counts.xe_tai + counts.xe_dap);
+        let pMotor = 0, pCar = 0, pBus = 0, pTruck = 0, pBike = 0;
 
         if (totalVeh > 0) {
             pMotor = Math.round(counts.xe_may / totalVeh * 100);
             pCar = Math.round(counts.o_to_con / totalVeh * 100);
             pBus = Math.round(counts.xe_khach / totalVeh * 100);
-            pTruck = Math.max(0, 100 - (pMotor + pCar + pBus));
+            pTruck = Math.round(counts.xe_tai / totalVeh * 100);
+            pBike = Math.max(0, 100 - (pMotor + pCar + pBus + pTruck));
 
             if (el.pctMotorcycle) el.pctMotorcycle.textContent = `${pMotor}% (${counts.xe_may} xe)`;
             if (el.pctCar) el.pctCar.textContent = `${pCar}% (${counts.o_to_con} xe)`;
             if (el.pctBus) el.pctBus.textContent = `${pBus}% (${counts.xe_khach} xe)`;
             if (el.pctTruck) el.pctTruck.textContent = `${pTruck}% (${counts.xe_tai} xe)`;
+            if (el.pctBicycle) el.pctBicycle.textContent = `${pBike}% (${counts.xe_dap} xe)`;
 
             if (el.ovPctMotorcycle) el.ovPctMotorcycle.textContent = `${pMotor}% (${counts.xe_may} xe)`;
             if (el.ovPctCar) el.ovPctCar.textContent = `${pCar}% (${counts.o_to_con} xe)`;
             if (el.ovPctBus) el.ovPctBus.textContent = `${pBus}% (${counts.xe_khach} xe)`;
             if (el.ovPctTruck) el.ovPctTruck.textContent = `${pTruck}% (${counts.xe_tai} xe)`;
+            if (el.ovPctBicycle) el.ovPctBicycle.textContent = `${pBike}% (${counts.xe_dap} xe)`;
         } else {
             if (el.pctMotorcycle) el.pctMotorcycle.textContent = "— (0 xe)";
             if (el.pctCar) el.pctCar.textContent = "— (0 xe)";
             if (el.pctBus) el.pctBus.textContent = "— (0 xe)";
             if (el.pctTruck) el.pctTruck.textContent = "— (0 xe)";
+            if (el.pctBicycle) el.pctBicycle.textContent = "— (0 xe)";
 
             if (el.ovPctMotorcycle) el.ovPctMotorcycle.textContent = "— (0 xe)";
             if (el.ovPctCar) el.ovPctCar.textContent = "— (0 xe)";
             if (el.ovPctBus) el.ovPctBus.textContent = "— (0 xe)";
             if (el.ovPctTruck) el.ovPctTruck.textContent = "— (0 xe)";
+            if (el.ovPctBicycle) el.ovPctBicycle.textContent = "— (0 xe)";
         }
 
         if (el.barMotorcycle) el.barMotorcycle.style.width = `${pMotor}%`;
         if (el.barCar) el.barCar.style.width = `${pCar}%`;
         if (el.barBus) el.barBus.style.width = `${pBus}%`;
         if (el.barTruck) el.barTruck.style.width = `${pTruck}%`;
+        if (el.barBicycle) el.barBicycle.style.width = `${pBike}%`;
 
         if (el.ovBarMotorcycle) el.ovBarMotorcycle.style.width = `${pMotor}%`;
         if (el.ovBarCar) el.ovBarCar.style.width = `${pCar}%`;
         if (el.ovBarBus) el.ovBarBus.style.width = `${pBus}%`;
         if (el.ovBarTruck) el.ovBarTruck.style.width = `${pTruck}%`;
+        if (el.ovBarBicycle) el.ovBarBicycle.style.width = `${pBike}%`;
 
         // Signal card
         const avgD = densityCount > 0 ? (densitySum / densityCount) : 0;
@@ -756,6 +781,32 @@ document.addEventListener("DOMContentLoaded", () => {
     // =========================================================================
     function renderOverviewStationCards() {
         if (!el.overviewStationCards) return;
+
+        const existingCards = Array.from(el.overviewStationCards.querySelectorAll(".station-card"));
+        if (existingCards.length === AppState.cameras.length) {
+            AppState.cameras.forEach(c => {
+                const m = c.metrics || {};
+                const lvlClass = m.congestion_level === 1 ? "normal" : (m.congestion_level === 2 ? "moderate" : "congested");
+                const flowDisplay = m.flow !== null && m.flow !== undefined ? `${Math.round(m.flow)} xe/h` : "—";
+                const densityDisplay = m.density !== null && m.density !== undefined ? `${m.density} xe/km` : "—";
+                const card = el.overviewStationCards.children[AppState.cameras.indexOf(c)];
+                if (card) {
+                    const badge = card.querySelector(".signal-badge");
+                    if (badge) {
+                        badge.className = `signal-badge ${lvlClass}`;
+                        badge.textContent = m.congestion_name || 'Thông thoáng';
+                    }
+                    const statVals = card.querySelectorAll(".station-stat-val");
+                    if (statVals.length >= 3) {
+                        statVals[0].textContent = flowDisplay;
+                        statVals[1].textContent = densityDisplay;
+                        statVals[2].textContent = `${m.total_vehicles || 0} xe`;
+                    }
+                }
+            });
+            return;
+        }
+
         el.overviewStationCards.innerHTML = AppState.cameras.map(c => {
             const m = c.metrics || {};
             const lvlClass = m.congestion_level === 1 ? "normal" : (m.congestion_level === 2 ? "moderate" : "congested");
@@ -781,7 +832,7 @@ document.addEventListener("DOMContentLoaded", () => {
                                 <span class="station-stat-val tabular-nums">${densityDisplay}</span>
                             </div>
                             <div class="station-stat-item">
-                                <span>Số xe ROI</span>
+                                <span>Xe trong ngã tư</span>
                                 <span class="station-stat-val tabular-nums">${m.total_vehicles || 0} xe</span>
                             </div>
                         </div>
@@ -869,6 +920,33 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
+        // Cập nhật DOM tại chỗ (in-place) để đồng bộ số xe tức thời và tránh làm gián đoạn stream video
+        const existingTiles = Array.from(el.cameraGridStage.querySelectorAll(".grid-tile"));
+        const existingIds = existingTiles.map(t => t.dataset.camId);
+        const targetIds = activeCams.map(c => c.id);
+        const idsMatch = existingIds.length === targetIds.length && existingIds.every((id, i) => id === targetIds[i]);
+
+        if (idsMatch) {
+            activeCams.forEach(c => {
+                const tile = el.cameraGridStage.querySelector(`[data-cam-id="${c.id}"]`);
+                if (!tile) return;
+                const m = c.metrics || {};
+                const lvlClass = m.congestion_level === 1 ? "normal" : (m.congestion_level === 2 ? "moderate" : "congested");
+                const flowDisplay = m.flow !== null && m.flow !== undefined ? `${Math.round(m.flow)} xe/h` : "—";
+
+                const statusSpan = tile.querySelector(".tile-status");
+                if (statusSpan) {
+                    statusSpan.className = `tile-status ${lvlClass}`;
+                    statusSpan.textContent = m.congestion_name || "Thông thoáng";
+                }
+                const metricsSpan = tile.querySelector(".tile-bottom-metrics .tabular-nums");
+                if (metricsSpan) {
+                    metricsSpan.textContent = `${m.total_vehicles || 0} xe trong ngã tư · ${flowDisplay}`;
+                }
+            });
+            return;
+        }
+
         el.cameraGridStage.innerHTML = activeCams.map(c => {
             const m = c.metrics || {};
             const lvlClass = m.congestion_level === 1 ? "normal" : (m.congestion_level === 2 ? "moderate" : "congested");
@@ -883,7 +961,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     </div>
                     <div class="tile-bottom-metrics">
                         <span>${c.bearing}</span>
-                        <span class="tabular-nums">${m.total_vehicles || 0} xe · ${flowDisplay}</span>
+                        <span class="tabular-nums">${m.total_vehicles || 0} xe trong ngã tư · ${flowDisplay}</span>
                     </div>
                 </div>
             `;
@@ -973,18 +1051,19 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
 
                 if (analyticsVehicleMixChart) {
-                    let sumM = 0, sumC = 0, sumB = 0, sumT = 0;
+                    let sumM = 0, sumC = 0, sumB = 0, sumT = 0, sumD = 0;
                     data.history.forEach(h => {
                         const cnt = h.counts || {};
                         sumM += cnt.xe_may || 0;
                         sumC += cnt.o_to_con || 0;
                         sumB += cnt.xe_khach || 0;
                         sumT += cnt.xe_tai || 0;
+                        sumD += cnt.xe_dap || 0;
                     });
-                    if (sumM + sumC + sumB + sumT === 0) {
-                        sumM = 65; sumC = 25; sumB = 6; sumT = 4;
+                    if (sumM + sumC + sumB + sumT + sumD === 0) {
+                        sumM = 60; sumC = 25; sumB = 6; sumT = 4; sumD = 5;
                     }
-                    analyticsVehicleMixChart.data.datasets[0].data = [sumM, sumC, sumB, sumT];
+                    analyticsVehicleMixChart.data.datasets[0].data = [sumM, sumC, sumB, sumT, sumD];
                     analyticsVehicleMixChart.update("none");
                 }
             }
@@ -1184,6 +1263,110 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     // =========================================================================
+    // 10.1 IMAGE UPLOAD & YOLO AI PREDICT CONTROLLER
+    // =========================================================================
+    const imageFileInput = document.getElementById("imageFileInput");
+    const imageModeSelect = document.getElementById("imageModeSelect");
+    const imageConfSlider = document.getElementById("imageConfSlider");
+    const lblImageConfVal = document.getElementById("lblImageConfVal");
+    const btnAnalyzeImage = document.getElementById("btnAnalyzeImage");
+    const imagePreviewArea = document.getElementById("imagePreviewArea");
+    const imagePlaceholderText = document.getElementById("imagePlaceholderText");
+    const imagePreviewImg = document.getElementById("imagePreviewImg");
+    const imageAnalysisResultCard = document.getElementById("imageAnalysisResultCard");
+    const imageResultAnnotated = document.getElementById("imageResultAnnotated");
+
+    if (imageConfSlider && lblImageConfVal) {
+        imageConfSlider.addEventListener("input", () => {
+            lblImageConfVal.textContent = `${imageConfSlider.value}%`;
+        });
+    }
+
+    if (imageFileInput) {
+        imageFileInput.addEventListener("change", () => {
+            const file = imageFileInput.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    imagePreviewImg.src = e.target.result;
+                    imagePreviewImg.style.display = "block";
+                    if (imagePlaceholderText) imagePlaceholderText.style.display = "none";
+                };
+                reader.readAsDataURL(file);
+            } else {
+                imagePreviewImg.style.display = "none";
+                if (imagePlaceholderText) imagePlaceholderText.style.display = "block";
+            }
+        });
+    }
+
+    if (btnAnalyzeImage) {
+        btnAnalyzeImage.addEventListener("click", async () => {
+            const file = imageFileInput ? imageFileInput.files[0] : null;
+            if (!file) {
+                alert("Vui lòng chọn một tệp ảnh từ máy tính để phân tích!");
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append("file", file);
+            formData.append("mode", imageModeSelect ? imageModeSelect.value : "detection");
+            formData.append("conf", (parseFloat(imageConfSlider ? imageConfSlider.value : 25) / 100.0).toString());
+
+            btnAnalyzeImage.disabled = true;
+            btnAnalyzeImage.innerHTML = `<span>Đang phân tích YOLO...</span>`;
+
+            try {
+                const res = await fetch("/api/predict", {
+                    method: "POST",
+                    body: formData
+                });
+                const data = await res.json();
+                if (data.success) {
+                    if (imageAnalysisResultCard) imageAnalysisResultCard.style.display = "block";
+                    if (imageResultAnnotated) imageResultAnnotated.src = data.annotated_image;
+
+                    const elTotal = document.getElementById("resImgTotalVeh");
+                    if (elTotal) elTotal.textContent = data.total_vehicles || 0;
+
+                    const elPcu = document.getElementById("resImgPcu");
+                    if (elPcu) elPcu.textContent = (data.pcu_score || 0).toFixed(1);
+
+                    const elLat = document.getElementById("resImgLatency");
+                    if (elLat) elLat.textContent = `${data.process_time_ms || 0} ms`;
+
+                    const cg = data.congestion || {};
+                    const cgBadge = document.getElementById("resImgCongestionBadge");
+                    if (cgBadge) {
+                        const lvlClass = cg.level === 1 ? "normal" : (cg.level === 2 ? "moderate" : "congested");
+                        cgBadge.className = `signal-badge ${lvlClass}`;
+                        cgBadge.textContent = cg.name || "Thông thoáng";
+                    }
+
+                    const counts = data.counts || {};
+                    const setVal = (id, val) => { const e = document.getElementById(id); if (e) e.textContent = val; };
+                    setVal("resImgCountMotorcycle", counts.xe_may || 0);
+                    setVal("resImgCountCar", counts.o_to_con || 0);
+                    setVal("resImgCountBus", counts.xe_khach || 0);
+                    setVal("resImgCountTruck", counts.xe_tai || 0);
+                    setVal("resImgCountBicycle", counts.xe_dap || 0);
+
+                    refreshIcons();
+                    imageAnalysisResultCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
+                } else {
+                    alert(data.error || "Không thể phân tích ảnh.");
+                }
+            } catch (err) {
+                alert("Lỗi kết nối khi gửi ảnh lên máy chủ.");
+            } finally {
+                btnAnalyzeImage.disabled = false;
+                btnAnalyzeImage.innerHTML = `<i data-lucide="sparkles" class="icon-xs"></i> <span>Bắt đầu phân tích hình ảnh</span>`;
+                refreshIcons();
+            }
+        });
+    }
+
+    // =========================================================================
     // 11. AUDIT LOGS TAB
     // =========================================================================
     async function loadLogsTab() {
@@ -1327,6 +1510,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 updateAnalyticsCharts();
             } else if (AppState.activeTab === "forecast") {
                 updateForecastTab();
+            } else if (AppState.activeTab === "logs") {
+                loadLogsTab();
             }
         } catch (err) {}
     }, 3000);

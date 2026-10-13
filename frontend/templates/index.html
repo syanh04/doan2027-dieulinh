@@ -87,9 +87,9 @@
                     <i data-lucide="trending-up" class="icon-sm"></i>
                     <span class="nav-tab-label">Dự báo</span>
                 </button>
-                <button class="nav-tab" data-tab="sources" onclick="switchTab('sources')" title="Quản lý nguồn camera & upload video">
+                <button class="nav-tab" data-tab="sources" onclick="switchTab('sources')" title="Quản lý nguồn camera, tải lên video & ảnh">
                     <i data-lucide="film" class="icon-sm"></i>
-                    <span class="nav-tab-label">Nguồn video</span>
+                    <span class="nav-tab-label">Nguồn & Tải lên</span>
                 </button>
                 <button class="nav-tab" data-tab="logs" onclick="switchTab('logs')" title="Nhật ký sự kiện & Viễn trắc">
                     <i data-lucide="file-text" class="icon-sm"></i>
@@ -136,7 +136,7 @@
                             </div>
                         </div>
                         <div class="kpi-block">
-                            <span class="kpi-label">Tổng xe trong ROI</span>
+                            <span class="kpi-label">Tổng xe trong ngã tư</span>
                             <div class="kpi-val-group">
                                 <span class="kpi-value tabular-nums" id="ovTotalVeh">0</span>
                                 <span class="kpi-unit">xe</span>
@@ -197,6 +197,13 @@
                                         <span class="mix-val tabular-nums" id="ovPctTruck">—</span>
                                     </div>
                                     <div class="mix-bar-bg"><div class="mix-bar-fill bar-truck" id="ovBarTruck" style="width: 0%;"></div></div>
+                                </div>
+                                <div class="mix-item">
+                                    <div class="mix-header">
+                                        <span class="mix-label"><span class="color-dot dot-bicycle"></span>Xe đạp</span>
+                                        <span class="mix-val tabular-nums" id="ovPctBicycle">—</span>
+                                    </div>
+                                    <div class="mix-bar-bg"><div class="mix-bar-fill bar-bicycle" id="ovBarBicycle" style="width: 0%;"></div></div>
                                 </div>
                             </div>
                         </div>
@@ -289,6 +296,10 @@
                                     <button class="btn-action" id="btnFocusEditRoi" title="Chỉnh ROI"><i data-lucide="edit-3" class="icon-sm"></i> <span id="lblEditRoiState">Chỉnh ROI</span></button>
                                 </div>
                             </div>
+                            <div class="focus-bottom-metrics" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background: var(--bg-card); border: 1px solid var(--border-default); border-top: none; border-radius: 0 0 var(--radius) var(--radius);">
+                                <span style="font-weight: 600; color: #eab308; display: flex; align-items: center; gap: 6px;"><span class="color-dot" style="background:#eab308;"></span><span id="focusBottomVehicles">0 xe trong ngã tư</span></span>
+                                <span class="tabular-nums" style="color: var(--text-secondary); font-size: 12px;" id="focusBottomDetails">PCU: 0.0 · Mật độ: 0.0 xe/km · Lưu lượng: 0 xe/h · Vận tốc: 0 km/h</span>
+                            </div>
                         </div>
                     </section>
 
@@ -356,6 +367,13 @@
                                         <span class="mix-val tabular-nums" id="pctTruck">—</span>
                                     </div>
                                     <div class="mix-bar-bg"><div class="mix-bar-fill bar-truck" id="barTruck" style="width: 0%;"></div></div>
+                                </div>
+                                <div class="mix-item">
+                                    <div class="mix-header">
+                                        <span class="mix-label"><span class="color-dot dot-bicycle"></span>Xe đạp</span>
+                                        <span class="mix-val tabular-nums" id="pctBicycle">—</span>
+                                    </div>
+                                    <div class="mix-bar-bg"><div class="mix-bar-fill bar-bicycle" id="barBicycle" style="width: 0%;"></div></div>
                                 </div>
                             </div>
                         </div>
@@ -550,6 +568,129 @@
                                 <!-- Populated via JS -->
                             </tbody>
                         </table>
+                    </div>
+
+                    <!-- PHẦN PHÂN TÍCH ẢNH TĨNH VỚI YOLO AI (IMAGE UPLOAD & DETECTION) -->
+                    <div class="image-analysis-section" style="margin-top: 24px; background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: 8px; padding: 20px;">
+                        <div class="sources-header-row" style="margin-bottom: 16px;">
+                            <div>
+                                <span class="section-title" style="display: flex; align-items: center; gap: 8px;">
+                                    <i data-lucide="image" class="icon-sm" style="color: var(--accent-blue);"></i>
+                                    Tải lên & Phân tích Ảnh phương tiện (YOLO AI)
+                                </span>
+                                <p style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">
+                                    Nhận diện trực tiếp 5 loại phương tiện (Xe máy, Ô tô con, Xe khách, Xe tải, Xe đạp), tính toán PCU và mật độ tức thời từ ảnh tĩnh. Kết quả sẽ tự động lưu vào Nhật ký.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;" class="image-upload-controls-grid">
+                            <!-- Khung chọn ảnh & thiết lập -->
+                            <div style="display: flex; flex-direction: column; gap: 14px;">
+                                <div class="form-group">
+                                    <label class="form-label">Chọn tệp ảnh từ máy tính (.jpg, .png, .jpeg, .webp):</label>
+                                    <input type="file" id="imageFileInput" accept="image/jpeg,image/png,image/webp,image/jpg" class="form-input">
+                                </div>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                                    <div class="form-group">
+                                        <label class="form-label">Chế độ phân tích:</label>
+                                        <select id="imageModeSelect" class="form-input">
+                                            <option value="detection">Nhận diện & Đếm xe (Detection)</option>
+                                            <option value="classification">Phân loại phương tiện (Classification)</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label">Ngưỡng tin cậy (Confidence): <span id="lblImageConfVal" class="tabular-nums" style="color: var(--accent-blue); font-weight: 600;">25%</span></label>
+                                        <input type="range" id="imageConfSlider" min="10" max="80" value="25" class="slider-full" style="margin-top: 6px;">
+                                    </div>
+                                </div>
+                                <button class="btn btn-primary" id="btnAnalyzeImage" style="width: 100%; justify-content: center; padding: 10px 16px;">
+                                    <i data-lucide="sparkles" class="icon-xs"></i>
+                                    <span>Bắt đầu phân tích hình ảnh</span>
+                                </button>
+                            </div>
+
+                            <!-- Khung xem trước và trạng thái ảnh -->
+                            <div id="imagePreviewArea" style="min-height: 180px; border: 2px dashed var(--border-color); border-radius: 8px; display: flex; align-items: center; justify-content: center; background: var(--bg-canvas); overflow: hidden; position: relative;">
+                                <div id="imagePlaceholderText" style="text-align: center; color: var(--text-muted); padding: 20px;">
+                                    <i data-lucide="upload-cloud" style="width: 36px; height: 36px; margin: 0 auto 8px; opacity: 0.5;"></i>
+                                    <div>Chưa chọn ảnh. Chọn một tệp ảnh để xem trước và nhận diện.</div>
+                                </div>
+                                <img id="imagePreviewImg" style="max-width: 100%; max-height: 240px; object-fit: contain; display: none;" alt="Preview">
+                            </div>
+                        </div>
+
+                        <!-- Khung kết quả phân tích ảnh (Hiện sau khi phân tích) -->
+                        <div id="imageAnalysisResultCard" style="display: none; margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border-color);">
+                            <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 20px;">
+                                <!-- Ảnh kết quả với Bounding Box -->
+                                <div>
+                                    <span style="font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; display: block;">
+                                        Ảnh kết quả nhận diện (YOLO Bounding Box & ROI):
+                                    </span>
+                                    <div style="border-radius: 6px; overflow: hidden; border: 1px solid var(--border-color); background: #000; text-align: center;">
+                                        <img id="imageResultAnnotated" style="max-width: 100%; max-height: 380px; object-fit: contain;" alt="Annotated Result">
+                                    </div>
+                                </div>
+
+                                <!-- Bảng thống kê chi tiết -->
+                                <div style="display: flex; flex-direction: column; gap: 12px;">
+                                    <span style="font-size: 13px; font-weight: 600; color: var(--text-secondary);">
+                                        Chỉ số giao thông & Nhận diện:
+                                    </span>
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                                        <div style="background: var(--bg-canvas); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+                                            <div style="font-size: 11px; color: var(--text-muted);">Tổng xe nhận diện</div>
+                                            <div style="font-size: 20px; font-weight: 700; color: var(--accent-blue);" id="resImgTotalVeh" class="tabular-nums">0</div>
+                                        </div>
+                                        <div style="background: var(--bg-canvas); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+                                            <div style="font-size: 11px; color: var(--text-muted);">Trạng thái nút giao</div>
+                                            <div style="margin-top: 4px;"><span class="signal-badge normal" id="resImgCongestionBadge">Thông thoáng</span></div>
+                                        </div>
+                                        <div style="background: var(--bg-canvas); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+                                            <div style="font-size: 11px; color: var(--text-muted);">Điểm PCU tương đương</div>
+                                            <div style="font-size: 18px; font-weight: 700; color: #8b5cf6;" id="resImgPcu" class="tabular-nums">0.0</div>
+                                        </div>
+                                        <div style="background: var(--bg-canvas); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+                                            <div style="font-size: 11px; color: var(--text-muted);">Thời gian xử lý</div>
+                                            <div style="font-size: 18px; font-weight: 700; color: var(--text-primary);" id="resImgLatency" class="tabular-nums">0 ms</div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Thống kê 5 loại phương tiện -->
+                                    <div style="background: var(--bg-canvas); padding: 12px; border-radius: 6px; border: 1px solid var(--border-color);">
+                                        <div style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">Số lượng chi tiết 5 loại phương tiện:</div>
+                                        <div style="display: flex; flex-direction: column; gap: 6px; font-size: 12px;">
+                                            <div style="display: flex; justify-content: space-between;">
+                                                <span><span class="color-dot dot-motorcycle"></span> Xe máy:</span>
+                                                <strong id="resImgCountMotorcycle" class="tabular-nums">0</strong>
+                                            </div>
+                                            <div style="display: flex; justify-content: space-between;">
+                                                <span><span class="color-dot dot-car"></span> Ô tô con:</span>
+                                                <strong id="resImgCountCar" class="tabular-nums">0</strong>
+                                            </div>
+                                            <div style="display: flex; justify-content: space-between;">
+                                                <span><span class="color-dot dot-bus"></span> Xe khách:</span>
+                                                <strong id="resImgCountBus" class="tabular-nums">0</strong>
+                                            </div>
+                                            <div style="display: flex; justify-content: space-between;">
+                                                <span><span class="color-dot dot-truck"></span> Xe tải:</span>
+                                                <strong id="resImgCountTruck" class="tabular-nums">0</strong>
+                                            </div>
+                                            <div style="display: flex; justify-content: space-between;">
+                                                <span><span class="color-dot dot-bicycle"></span> Xe đạp:</span>
+                                                <strong id="resImgCountBicycle" class="tabular-nums">0</strong>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div style="font-size: 11px; color: var(--accent-emerald); display: flex; align-items: center; gap: 6px;">
+                                        <i data-lucide="check-circle-2" class="icon-xs"></i>
+                                        <span>Đã tự động lưu bản ghi phân tích vào thẻ Nhật ký (Audit Logs).</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </section>

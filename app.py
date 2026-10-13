@@ -78,6 +78,8 @@ if os.path.exists(CLS_WEIGHTS_PATH):
 
 try:
     det_model = YOLO(DET_WEIGHTS_PATH)
+    if torch.cuda.is_available():
+        det_model.to('cuda')
     print("[SUCCESS] Loaded Object Detection Model:", DET_WEIGHTS_PATH)
     camera_manager.initialize(det_model)
 except Exception as e:
@@ -89,7 +91,7 @@ COCO_VEHICLE_MAP = {
     3: ("Xe máy", "xe_may", (255, 144, 30)),        # motorcycle - Blue/Cyan
     5: ("Xe khách", "xe_khach", (226, 43, 138)),    # bus - Purple
     7: ("Xe tải", "xe_tai", (0, 69, 255)),          # truck - Red/Orange
-    1: ("Xe đạp", "xe_may", (255, 144, 30))         # bicycle -> Xe máy category
+    1: ("Xe đạp", "xe_dap", (94, 197, 34))          # bicycle - Emerald Green (BGR)
 }
 
 CLS_VN_MAP = {
@@ -331,7 +333,7 @@ def compute_roi_metrics(det_boxes, w, h):
     roi_length_m = measure_roi_length_m(w, h)
     roi_km = roi_length_m / 1000.0 if roi_length_m > 0 else _DENSITY_KM
 
-    counts = {"xe_may": 0, "o_to_con": 0, "xe_khach": 0, "xe_tai": 0}
+    counts = {"xe_may": 0, "o_to_con": 0, "xe_khach": 0, "xe_tai": 0, "xe_dap": 0}
     roi_count = 0
     roi_pcu = 0.0
     occupied_area = 0.0
@@ -539,7 +541,7 @@ def get_cameras():
     })
 
 @app.route("/api/cameras/<camera_id>/source", methods=["POST"])
-@admin_required
+@login_required
 def set_camera_source(camera_id):
     """
     Tải lên video hoặc gán file mẫu cho một camera cụ thể.
@@ -758,7 +760,7 @@ def stream_events():
                 "timestamp": int(time.time())
             }
             yield f"data: {json.dumps(payload)}\n\n"
-            time.sleep(1.2)
+            time.sleep(0.5)
     return app.response_class(event_stream(), mimetype="text/event-stream")
 
 @app.route("/api/system_telemetry", methods=["GET"])
@@ -860,7 +862,7 @@ def predict():
         h, w = img_bgr.shape[:2]
         annotated_img = img_bgr.copy()
         
-        counts = {"xe_may": 0, "o_to_con": 0, "xe_khach": 0, "xe_tai": 0}
+        counts = {"xe_may": 0, "o_to_con": 0, "xe_khach": 0, "xe_tai": 0, "xe_dap": 0}
         detections_list = []
         det_boxes = []          # (x1, y1, x2, y2, cls_id) để tính chỉ số ROI
         cls_result_data = None
@@ -886,7 +888,8 @@ def predict():
                          color=(0, 255, 127), thickness=2)
 
             # Increment count
-            if "may" in class_raw.lower(): counts["xe_may"] += 1
+            if "dap" in class_raw.lower(): counts["xe_dap"] += 1
+            elif "may" in class_raw.lower(): counts["xe_may"] += 1
             elif "to" in class_raw.lower(): counts["o_to_con"] += 1
             elif "khach" in class_raw.lower(): counts["xe_khach"] += 1
             elif "tai" in class_raw.lower(): counts["xe_tai"] += 1
@@ -958,7 +961,8 @@ def predict():
 
         # ---- Chỉ số PCU (Passenger Car Unit) ----
         pcu = (counts["xe_may"] * PCU_WEIGHTS["xe_may"]) + (counts["o_to_con"] * PCU_WEIGHTS["o_to_con"]) \
-              + (counts["xe_khach"] * PCU_WEIGHTS["xe_khach"]) + (counts["xe_tai"] * PCU_WEIGHTS["xe_tai"])
+              + (counts["xe_khach"] * PCU_WEIGHTS["xe_khach"]) + (counts["xe_tai"] * PCU_WEIGHTS["xe_tai"]) \
+              + (counts.get("xe_dap", 0) * PCU_WEIGHTS.get("xe_dap", 0.2))
         total_vehicles = sum(counts.values())
 
         # ---- Chỉ số theo VÙNG ROI (mật độ / độ chiếm mặt đường) ----
@@ -999,6 +1003,25 @@ def predict():
 
         elapsed_ms = round((time.time() - start_time) * 1000, 1)
 
+        # Ghi nhận kết quả phân tích ảnh vào Audit Logs để tab Nhật ký đồng bộ
+        try:
+            user_name = session.get("user", {}).get("username", "admin")
+            add_audit_log(
+                event_type="IMAGE_ANALYSIS",
+                camera_id="UPLOAD_IMG",
+                flow=None,
+                density=roi_metrics["density"],
+                pcu=round(pcu, 1),
+                speed=None,
+                status_level=congestion_info["level"],
+                status_text=f"Phân tích ảnh tĩnh: {total_vehicles} xe ({congestion_info['name']})",
+                advice=f"Mật độ ước tính {roi_metrics['density']:.0f} xe/km. Độ chiếm dụng ROI: {roi_metrics['occupancy']:.1f}%.",
+                username=user_name,
+                details=f"Xe máy: {counts['xe_may']} | Ô tô con: {counts['o_to_con']} | Xe khách: {counts['xe_khach']} | Xe tải: {counts['xe_tai']} | Xe đạp: {counts.get('xe_dap', 0)} | Điểm PCU: {pcu:.1f} | Xử lý: {elapsed_ms}ms"
+            )
+        except Exception as log_err:
+            pass
+
         return jsonify({
             "success": True,
             "mode": mode,
@@ -1008,7 +1031,8 @@ def predict():
                 "xe_may": counts["xe_may"],
                 "o_to_con": counts["o_to_con"],
                 "xe_khach": counts["xe_khach"],
-                "xe_tai": counts["xe_tai"]
+                "xe_tai": counts["xe_tai"],
+                "xe_dap": counts.get("xe_dap", 0)
             },
             "pcu_score": round(pcu, 1),
             "roi_count": roi_metrics["roi_count"],
@@ -1103,7 +1127,7 @@ def _finalize_stream(filename, reason=""):
     metrics = video_metrics_store.get(filename)
     if metrics is None:
         metrics = {"total_vehicles": 0, "roi_count": 0,
-                   "counts": {"xe_may": 0, "o_to_con": 0, "xe_khach": 0, "xe_tai": 0},
+                   "counts": {"xe_may": 0, "o_to_con": 0, "xe_khach": 0, "xe_tai": 0, "xe_dap": 0},
                    "pcu_score": 0.0, "density": 0.0, "occupancy": 0.0, "flow": 0,
                    "roi_length_m": round(float(ROI_REAL_LENGTH_M), 1),
                    "process_time_ms": 0.0}

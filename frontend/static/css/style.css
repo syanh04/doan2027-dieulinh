@@ -953,6 +953,7 @@ html, body {
 .dot-car { background: var(--veh-car); }
 .dot-bus { background: var(--veh-bus); }
 .dot-truck { background: var(--veh-truck); }
+.dot-bicycle { background: var(--veh-bicycle); }
 
 .mix-bar-bg {
     width: 100%;
@@ -972,6 +973,7 @@ html, body {
 .bar-car { background: var(--veh-car); }
 .bar-bus { background: var(--veh-bus); }
 .bar-truck { background: var(--veh-truck); }
+.bar-bicycle { background: var(--veh-bicycle); }
 
 .signal-card {
     background: var(--bg-card);

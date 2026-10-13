@@ -72,7 +72,7 @@ class TrafficForecaster:
 
             for step in range(1, num_steps + 1):
                 future_sec = last_time + step * step_minutes * 60
-                future_time_str = time.strftime("%H:%M", time.localtime(future_sec))
+                future_time_str = time.strftime("%H:%M:%S", time.localtime(future_sec))
                 ci_spread = 1.96 * std_err * np.sqrt(step)
 
                 forecast_points.append({"time_str": future_time_str, "timestamp": future_sec, "flow": round(ma_val, 1)})
@@ -101,7 +101,7 @@ class TrafficForecaster:
 
             for step in range(1, num_steps + 1):
                 future_sec = last_time + step * step_minutes * 60
-                future_time_str = time.strftime("%H:%M", time.localtime(future_sec))
+                future_time_str = time.strftime("%H:%M:%S", time.localtime(future_sec))
 
                 damped_trend_sum = sum((self.phi ** i) for i in range(1, step + 1)) * curr_trend
                 y_hat = max(0.0, curr_level + damped_trend_sum)

@@ -53,6 +53,7 @@
     --veh-car: #3b82f6;
     --veh-bus: #8b5cf6;
     --veh-truck: #f97316;
+    --veh-bicycle: #22c55e;
 
     /* 8. Spacing & Radius (8px Grid & Uniform 6px Radius) */
     --radius: 6px;
@@ -107,4 +108,5 @@
     --veh-car: #2563eb;
     --veh-bus: #7c3aed;
     --veh-truck: #ea580c;
+    --veh-bicycle: #16a34a;
 }
