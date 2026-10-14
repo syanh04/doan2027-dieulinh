@@ -98,15 +98,26 @@ class CameraWorker:
         # Bộ đệm bounding box liên tục tránh giật nháy
         self.last_det_boxes = []
 
+        # Bộ đếm xe lũy kế chuẩn ITS (Monotonically Increasing Counter) - Không bao giờ tụt
+        self.cumulative_vehicles = 0
+        self.cumulative_counts = {"xe_may": 0, "o_to_con": 0, "xe_khach": 0, "xe_tai": 0, "xe_dap": 0}
+        self.counted_track_ids = set()
+        self.roi_history = deque(maxlen=6)
+        self.flow_history = deque(maxlen=6)
+
         # Chỉ số thời gian thực khởi tạo
         self.metrics = {
             "total_vehicles": 0,
+            "cumulative_vehicles": 0,
+            "cumulative_counts": {"xe_may": 0, "o_to_con": 0, "xe_khach": 0, "xe_tai": 0, "xe_dap": 0},
             "counts": {"xe_may": 0, "o_to_con": 0, "xe_khach": 0, "xe_tai": 0, "xe_dap": 0},
             "pcu": 0.0,
             "density": 0.0,
             "flow": 0.0,
             "speed": 0.0,
             "fps": 0.0,
+            "queue_vehicles": 0,
+            "queue_length_m": 0.0,
             "congestion_level": 1,
             "congestion_name": "Thông thoáng",
             "last_updated": time.time(),
@@ -115,7 +126,7 @@ class CameraWorker:
         }
 
         # Quản lý tracking và đo lường lưu lượng (Flow Q)
-        self.tracked_objects = {}  # {track_id: dict(centroid, cls, first_seen, last_time, last_x, last_y, speed)}
+        self.tracked_objects = {}  # {track_id: dict(centroid, cls, first_seen, last_time, last_x, last_y, speed, hits, lost_frames)}
         self.next_track_id = 1
         self.crossed_ids = set()
         self.crossing_events = deque(maxlen=2000)  # [(video_time_sec, cat_key)]
@@ -234,8 +245,11 @@ class CameraWorker:
             if not ret:
                 cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                 frame_idx = 0
-                # Khi video lặp lại từ đầu: dọn bớt track cũ và crossed_ids để đếm lại chu kỳ mới chính xác
+                # Khi video lặp lại:
+                # TUYỆT ĐỐI GIỮ NGUYÊN BỘ ĐẾM LŨY KẾ (self.cumulative_vehicles và self.cumulative_counts)
+                # Chỉ dọn các track tạm thời của chu kỳ vừa kết thúc để sẵn sàng đón nhận luồng mới:
                 self.crossed_ids.clear()
+                self.counted_track_ids.clear()
                 self.tracked_objects.clear()
                 continue
 
@@ -286,20 +300,16 @@ class CameraWorker:
 
             # Tính tọa độ pixel của ROI theo kích thước khung hình hiện tại
             roi_px = (self.roi_norm * np.array([w, h], dtype=np.float32)).astype(np.int32)
-            roi_count = 0
-            counts = {"xe_may": 0, "o_to_con": 0, "xe_khach": 0, "xe_tai": 0, "xe_dap": 0}
             current_centers = []
             roi_det_boxes = []
 
-            # Lọc các phương tiện nằm trong vùng ROI ngã tư (Chỉ đếm xe trong zone vàng)
+            # Lọc các phương tiện nằm trong vùng ROI (dung sai biên -6px để chống nhấp nháy ở mép đa giác)
             for (x1, y1, x2, y2, cid, conf) in det_boxes:
                 cx, cy = (x1 + x2) / 2.0, (y1 + y2) / 2.0
                 cat_key = COCO_VEHICLES[cid][1]
 
-                # Kiểm tra xe có nằm trong đa giác ngã tư không
-                if cv2.pointPolygonTest(roi_px, (float(cx), float(cy)), False) >= 0:
-                    roi_count += 1
-                    counts[cat_key] += 1
+                dist_to_poly = cv2.pointPolygonTest(roi_px, (float(cx), float(cy)), True)
+                if dist_to_poly >= -6.0:
                     current_centers.append(((cx, cy), cat_key, (x1, y1, x2, y2)))
                     roi_det_boxes.append((x1, y1, x2, y2, cid, conf))
 
@@ -319,7 +329,7 @@ class CameraWorker:
 
             for tid, obj in list(self.tracked_objects.items()):
                 prev_c = obj["centroid"]
-                best_dist = 70.0
+                best_dist = 85.0
                 best_idx = -1
                 for idx, (curr_c, c_cat, c_box) in enumerate(current_centers):
                     if idx in used_current:
@@ -338,16 +348,26 @@ class CameraWorker:
                     dy_m = (c_pt[1] - prev_c[1]) * m_per_px_y
                     dist_m = np.hypot(dx_m, dy_m)
                     dt = max(0.01, video_time_sec - obj.get("last_time", video_time_sec - 0.04))
-                    v_kmh = (dist_m / dt) * 3.6
-                    v_kmh = min(80.0, max(0.0, v_kmh))
+                    v_raw = (dist_m / dt) * 3.6
+                    v_raw = min(80.0, max(0.0, v_raw))
+                    v_kmh = round(0.3 * v_raw + 0.7 * obj.get("speed", v_raw), 1)
 
-                    # Kiểm tra vượt qua trigger line (hỗ trợ cả luồng xe dọc Y lẫn luồng xe ngang X)
+                    # Kiểm tra vượt qua trigger line
                     if tid not in self.crossed_ids:
                         crossed_y = (obj["last_y"] < trigger_y and c_pt[1] >= trigger_y) or (obj["last_y"] > trigger_y and c_pt[1] <= trigger_y)
                         crossed_x = (obj["last_x"] < trigger_x and c_pt[0] >= trigger_x) or (obj["last_x"] > trigger_x and c_pt[0] <= trigger_x)
                         if crossed_y or crossed_x:
                             self.crossed_ids.add(tid)
                             self.crossing_events.append((video_time_sec, c_cat))
+
+                    hits = obj.get("hits", 1) + 1
+
+                    # BỘ ĐẾM XE LŨY KẾ (Đơn điệu tăng - tuyệt đối không nhảy lùi)
+                    # Ghi nhận khi xe qua vạch cắt HOẶC đã hiện diện vững chắc trong ROI >= 3 frame
+                    if (tid in self.crossed_ids or hits >= 3) and tid not in self.counted_track_ids:
+                        self.counted_track_ids.add(tid)
+                        self.cumulative_vehicles += 1
+                        self.cumulative_counts[c_cat] = self.cumulative_counts.get(c_cat, 0) + 1
 
                     new_tracked[tid] = {
                         "centroid": c_pt,
@@ -356,8 +376,17 @@ class CameraWorker:
                         "last_time": video_time_sec,
                         "last_x": c_pt[0],
                         "last_y": c_pt[1],
-                        "speed": v_kmh
+                        "speed": v_kmh,
+                        "hits": hits,
+                        "lost_frames": 0,
+                        "box": c_box
                     }
+                else:
+                    # Giữ lại track trong tối đa 8 frames nếu tạm thời mất phát hiện (chống chập chờn)
+                    lost = obj.get("lost_frames", 0) + 1
+                    if lost <= 8:
+                        obj["lost_frames"] = lost
+                        new_tracked[tid] = obj
 
             # Thêm xe mới phát hiện trong ROI vào tracking
             for idx, (curr_c, c_cat, c_box) in enumerate(current_centers):
@@ -371,7 +400,10 @@ class CameraWorker:
                         "last_time": video_time_sec,
                         "last_x": curr_c[0],
                         "last_y": curr_c[1],
-                        "speed": 0.0
+                        "speed": 0.0,
+                        "hits": 1,
+                        "lost_frames": 0,
+                        "box": c_box
                     }
 
             self.tracked_objects = new_tracked
@@ -379,6 +411,21 @@ class CameraWorker:
             # =========================================================================
             # TÍNH TOÁN CÁC CHỈ SỐ HOÀN TOÀN TỪ PHƯƠNG TIỆN THỰC TẾ TRONG VIDEO
             # =========================================================================
+            # Lọc các xe đang thực sự active trong ROI (lost_frames <= 2)
+            active_objects = [obj for obj in self.tracked_objects.values() if obj.get("lost_frames", 0) <= 2]
+            raw_active_count = len(active_objects)
+
+            # Bộ đệm làm mượt trung vị (Temporal Median Smoothing) loại bỏ 100% nhấp nháy 0 -> 1 -> 0
+            self.roi_history.append(raw_active_count)
+            roi_count = int(np.round(np.median(list(self.roi_history))))
+
+            # Đếm số xe theo phân loại trong ngã tư
+            counts = {"xe_may": 0, "o_to_con": 0, "xe_khach": 0, "xe_tai": 0, "xe_dap": 0}
+            for obj in active_objects:
+                cat_k = obj.get("cls", "o_to_con")
+                if cat_k in counts:
+                    counts[cat_k] += 1
+
             # 1. Mật độ K (xe/km trong ROI)
             roi_km = max(0.01, self.length_m / 1000.0)
             density = round(roi_count / roi_km, 1)
@@ -393,11 +440,10 @@ class CameraWorker:
             )
 
             # 3. Vận tốc V (km/h) trung bình thực tế từ các xe đang chuyển động
-            moving_speeds = [obj["speed"] for obj in self.tracked_objects.values() if obj.get("speed", 0) > 3.0]
+            moving_speeds = [obj["speed"] for obj in active_objects if obj.get("speed", 0) > 3.0]
             if moving_speeds:
                 speed = round(float(np.mean(moving_speeds)), 1)
             elif density > 0:
-                # Mô hình Greenshields ITS khi các xe đang xếp hàng / di chuyển chậm
                 v_free = 45.0
                 speed = round(max(5.0, v_free * (1.0 - min(0.85, density / 350.0))), 1)
             else:
@@ -409,12 +455,14 @@ class CameraWorker:
             if len(recent_crossings) >= 2 and video_time_sec >= 10.0:
                 actual_w = max(10.0, min(video_time_sec, window_sec))
                 flow_counting = (len(recent_crossings) / actual_w) * 3600.0
-                # Kết hợp trọng số giữa số đếm thực và định luật giao thông cơ bản
-                flow = round(min(4500.0, max(100.0, 0.6 * flow_counting + 0.4 * (density * speed))), 0)
+                flow_raw = round(min(4500.0, max(100.0, 0.6 * flow_counting + 0.4 * (density * speed))), 0)
             elif roi_count > 0 and speed > 0:
-                flow = round(min(4500.0, density * speed), 0)
+                flow_raw = round(min(4500.0, density * speed), 0)
             else:
-                flow = 0.0
+                flow_raw = 0.0
+
+            self.flow_history.append(flow_raw)
+            flow = round(float(np.mean(list(self.flow_history))), 0)
 
             # 5. Phân cấp mức độ ùn tắc
             if density < DENSITY_THRESHOLDS[0]:
@@ -431,14 +479,14 @@ class CameraWorker:
                 cg_name = "Ùn tắc nghiêm trọng"
 
             # 6. Tính toán hàng chờ phương tiện (Queue detection trong Zone)
-            # Xe dừng chờ: vận tốc < 5.0 km/h hoặc tốc độ thấp trong vùng trước vạch dừng
-            queue_vehicles = sum(1 for obj in self.tracked_objects.values() if obj.get("speed", 0.0) < 6.0)
-            # Ước tính chiều dài hàng chờ (mét) dựa theo PCU và khoảng cách an toàn (trung bình ~3.5m / PCU)
+            queue_vehicles = sum(1 for obj in active_objects if obj.get("speed", 0.0) < 6.0)
             queue_length_m = round(min(self.length_m, queue_vehicles * 4.0), 1)
 
             # Cập nhật telemetry thời gian thực
             self.metrics = {
                 "total_vehicles": roi_count,
+                "cumulative_vehicles": self.cumulative_vehicles,
+                "cumulative_counts": self.cumulative_counts.copy(),
                 "counts": counts,
                 "pcu": pcu,
                 "density": density,
@@ -535,7 +583,7 @@ class CameraWorker:
                 cv2.putText(frame_annotated, tag, (x1 + 4, max(14, y1 - 5)), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (255, 255, 255), 1, cv2.LINE_AA)
 
             # 4. Thêm banner telemetry nhỏ góc trên bên trái
-            hud_text = f"XE: {roi_count} | PCU: {pcu:.1f} | K: {density:.0f} xe/km | Q: {int(flow)} xe/h | V: {speed:.1f} km/h | HANG CHO: {queue_vehicles} xe ({queue_length_m:.0f}m)"
+            hud_text = f"BO DEM: {self.cumulative_vehicles} xe | TRONG ZONE: {roi_count} xe | PCU: {pcu:.1f} | K: {density:.0f} xe/km | Q: {int(flow)} xe/h | V: {speed:.1f} km/h | HANG CHO: {queue_vehicles} xe ({queue_length_m:.0f}m)"
             cv2.rectangle(frame_annotated, (12, 12), (16 + len(hud_text) * 9, 38), (15, 23, 42), -1)
             cv2.putText(frame_annotated, hud_text, (20, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (0, 215, 255), 1, cv2.LINE_AA)
 

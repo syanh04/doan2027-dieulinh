@@ -624,7 +624,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     const flowDisplay = m.flow !== null && m.flow !== undefined ? `${Math.round(m.flow)} xe/h` : "—";
                     if (el.focusCamFps) el.focusCamFps.textContent = `${(m.fps || 25.0).toFixed(1)} FPS`;
                     const focusVeh = document.getElementById("focusBottomVehicles");
-                    if (focusVeh) focusVeh.textContent = `${m.total_vehicles || 0} xe trong ngã tư`;
+                    if (focusVeh) focusVeh.textContent = `Bộ đếm: ${m.cumulative_vehicles || 0} xe · Trong zone: ${m.total_vehicles || 0} xe`;
                     const focusDet = document.getElementById("focusBottomDetails");
                     if (focusDet) focusDet.textContent = `PCU: ${(m.pcu || 0).toFixed(1)} · Mật độ: ${(m.density || 0).toFixed(1)} xe/km · Lưu lượng: ${flowDisplay} · Vận tốc: ${m.speed || 0} km/h`;
                 }
@@ -641,6 +641,8 @@ document.addEventListener("DOMContentLoaded", () => {
         let pcuSum = 0;
         let speedSum = 0, speedCount = 0;
         let totalVehInRoi = 0;
+        let totalCumulativeVeh = 0;
+        let cumulativeCounts = { xe_may: 0, o_to_con: 0, xe_khach: 0, xe_tai: 0, xe_dap: 0 };
         let counts = { xe_may: 0, o_to_con: 0, xe_khach: 0, xe_tai: 0, xe_dap: 0 };
 
         let activeCams = [];
@@ -668,6 +670,14 @@ document.addEventListener("DOMContentLoaded", () => {
             }
             pcuSum += (m.pcu || 0);
             totalVehInRoi += (m.total_vehicles || 0);
+            totalCumulativeVeh += (m.cumulative_vehicles || 0);
+
+            const cc = m.cumulative_counts || {};
+            cumulativeCounts.xe_may += (cc.xe_may || 0);
+            cumulativeCounts.o_to_con += (cc.o_to_con || 0);
+            cumulativeCounts.xe_khach += (cc.xe_khach || 0);
+            cumulativeCounts.xe_tai += (cc.xe_tai || 0);
+            cumulativeCounts.xe_dap += (cc.xe_dap || 0);
 
             const mc = m.counts || {};
             counts.xe_may += (mc.xe_may || 0);
@@ -680,7 +690,9 @@ document.addEventListener("DOMContentLoaded", () => {
         // 1. Cập nhật Overview Tab
         el.ovFlow.textContent = flowCount > 0 ? Math.round(flowSum / flowCount).toLocaleString("vi-VN") : "—";
         el.ovDensity.textContent = densityCount > 0 ? (densitySum / densityCount).toFixed(1) : "—";
-        el.ovTotalVeh.textContent = totalVehInRoi;
+        el.ovTotalVeh.textContent = totalCumulativeVeh;
+        const ovSub = document.getElementById("ovTotalVehSub");
+        if (ovSub) ovSub.textContent = `Hiện diện trong zone: ${totalVehInRoi} xe`;
 
         // 2. Cập nhật Live Tab KPIs
         el.kpiFlow.textContent = flowCount > 0 ? Math.round(flowSum / flowCount).toLocaleString("vi-VN") : "—";
@@ -688,8 +700,10 @@ document.addEventListener("DOMContentLoaded", () => {
         el.kpiPcu.textContent = pcuSum.toFixed(1);
         el.kpiSpeed.textContent = speedCount > 0 ? Math.round(speedSum / speedCount) : "—";
 
-        // 3. Cơ cấu phương tiện - KHÔNG CHIA CHO 0 KHI 0 XE
-        const totalVeh = (counts.xe_may + counts.o_to_con + counts.xe_khach + counts.xe_tai + counts.xe_dap);
+        // 3. Cơ cấu phương tiện - Sử dụng bộ đếm tích lũy để ổn định vững chắc, không bao giờ tụt về 0
+        const totalCum = (cumulativeCounts.xe_may + cumulativeCounts.o_to_con + cumulativeCounts.xe_khach + cumulativeCounts.xe_tai + cumulativeCounts.xe_dap);
+        const useCounts = totalCum > 0 ? cumulativeCounts : counts;
+        const totalVeh = (useCounts.xe_may + useCounts.o_to_con + useCounts.xe_khach + useCounts.xe_tai + useCounts.xe_dap);
         let pMotor = 0, pCar = 0, pBus = 0, pTruck = 0, pBike = 0;
 
         if (totalVeh > 0) {
@@ -800,7 +814,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     if (statVals.length >= 3) {
                         statVals[0].textContent = flowDisplay;
                         statVals[1].textContent = densityDisplay;
-                        statVals[2].textContent = `${m.total_vehicles || 0} xe`;
+                        statVals[2].textContent = `${m.cumulative_vehicles || 0} xe (${m.total_vehicles || 0} trong zone)`;
                     }
                 }
             });
@@ -832,8 +846,8 @@ document.addEventListener("DOMContentLoaded", () => {
                                 <span class="station-stat-val tabular-nums">${densityDisplay}</span>
                             </div>
                             <div class="station-stat-item">
-                                <span>Xe trong ngã tư</span>
-                                <span class="station-stat-val tabular-nums">${m.total_vehicles || 0} xe</span>
+                                <span>Bộ đếm (Lũy kế)</span>
+                                <span class="station-stat-val tabular-nums">${m.cumulative_vehicles || 0} xe (${m.total_vehicles || 0} trong zone)</span>
                             </div>
                         </div>
                     </div>
@@ -878,7 +892,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     <img src="${c.stream_url_low}" class="cam-thumb" alt="${c.id}">
                     <div class="cam-meta">
                         <div class="cam-name-row">${c.id} · ${c.name}</div>
-                        <div class="cam-flow-row">${m.total_vehicles || 0} xe · ${flowDisplay}</div>
+                        <div class="cam-flow-row">Đã đếm: ${m.cumulative_vehicles || 0} xe · ${flowDisplay}</div>
                     </div>
                 </div>
             `;
@@ -941,7 +955,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
                 const metricsSpan = tile.querySelector(".tile-bottom-metrics .tabular-nums");
                 if (metricsSpan) {
-                    metricsSpan.textContent = `${m.total_vehicles || 0} xe trong ngã tư · ${flowDisplay}`;
+                    metricsSpan.textContent = `Đã đếm: ${m.cumulative_vehicles || 0} xe · Trong zone: ${m.total_vehicles || 0} xe · ${flowDisplay}`;
                 }
             });
             return;
@@ -961,7 +975,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     </div>
                     <div class="tile-bottom-metrics">
                         <span>${c.bearing}</span>
-                        <span class="tabular-nums">${m.total_vehicles || 0} xe trong ngã tư · ${flowDisplay}</span>
+                        <span class="tabular-nums">Đã đếm: ${m.cumulative_vehicles || 0} xe · Trong zone: ${m.total_vehicles || 0} xe · ${flowDisplay}</span>
                     </div>
                 </div>
             `;
