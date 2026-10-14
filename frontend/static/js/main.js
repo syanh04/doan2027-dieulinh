@@ -1142,21 +1142,45 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!el.sourcesCameraGrid) return;
 
         // Render current camera sources
-        el.sourcesCameraGrid.innerHTML = AppState.cameras.map(c => `
-            <div class="video-source-card">
-                <div class="vsource-header">
-                    <span>${c.id} · ${c.name}</span>
-                    <span class="badge-subtle">${c.status}</span>
+        el.sourcesCameraGrid.innerHTML = AppState.cameras.map(c => {
+            const m = c.metrics || {};
+            const queueText = m.queue_vehicles !== undefined ? `${m.queue_vehicles} xe (${m.queue_length_m || 0}m)` : "—";
+            return `
+            <div class="video-source-card" style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 8px;">
+                <div class="vsource-header" style="display: flex; justify-content: space-between; align-items: center;">
+                    <strong style="color: var(--accent-blue); font-size: 13px;">${c.id}</strong>
+                    <span class="signal-badge ${c.status === 'ONLINE' ? 'normal' : 'danger'}" style="font-size: 10px; padding: 2px 8px;">${c.status}</span>
                 </div>
-                <div class="vsource-file">Nguồn: ${c.video_rel_path || 'Mặc định'}</div>
-                <div class="vsource-file">Phiên: ${c.session_id || 'Chưa khởi tạo'}</div>
-                <div class="vsource-actions">
-                    <button class="btn btn-sm btn-outline" onclick="openUploadForCam('${c.id}')">
-                        <i data-lucide="upload" class="icon-xs"></i> Đổi video
+                <div style="font-size: 12px; font-weight: 600; color: var(--text-primary);">${c.name}</div>
+                <div class="vsource-file" style="font-size: 11px; color: var(--text-muted); word-break: break-all;">
+                    <i data-lucide="map-pin" style="width: 12px; height: 12px; display: inline-block; vertical-align: middle;"></i>
+                    ${c.district}
+                </div>
+                <div style="background: rgba(0,0,0,0.25); border-radius: 6px; padding: 8px; font-size: 11px; display: flex; flex-direction: column; gap: 4px; border: 1px solid rgba(255,255,255,0.05);">
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: var(--text-muted);">Vùng Zone ROI:</span>
+                        <span style="color: #10b981; font-weight: 600;">L=${c.length_m}m · W=${c.width_m}m</span>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: var(--text-muted);">Xe trong Zone:</span>
+                        <strong style="color: var(--text-primary);">${m.total_vehicles || 0} xe</strong>
+                    </div>
+                    <div style="display: flex; justify-content: space-between;">
+                        <span style="color: var(--text-muted);">Hàng chờ:</span>
+                        <strong style="color: #f59e0b;">${queueText}</strong>
+                    </div>
+                </div>
+                <div class="vsource-actions" style="margin-top: 4px; display: flex; gap: 8px;">
+                    <button class="btn btn-sm btn-outline" style="flex: 1; justify-content: center;" onclick="openUploadForCam('${c.id}')">
+                        <i data-lucide="refresh-cw" class="icon-xs"></i> Đổi video
+                    </button>
+                    <button class="btn btn-sm btn-outline" style="padding: 6px 10px;" onclick="focusCamera('${c.id}')" title="Xem trực tiếp">
+                        <i data-lucide="eye" class="icon-xs"></i>
                     </button>
                 </div>
             </div>
-        `).join("");
+            `;
+        }).join("");
 
         // Load uploaded videos list
         try {

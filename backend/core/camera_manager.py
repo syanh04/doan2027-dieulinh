@@ -59,7 +59,11 @@ def resolve_video_path(rel_path):
         os.path.join(str(WORKSPACE_DIR), "uploads", os.path.basename(rel_path)),
         os.path.join(str(WORKSPACE_DIR), "uploads", "CAM-01", os.path.basename(rel_path)),
         os.path.join(str(STATIC_DIR), "samples", os.path.basename(rel_path)),
-        os.path.join(str(STATIC_DIR), os.path.basename(rel_path))
+        os.path.join(str(STATIC_DIR), os.path.basename(rel_path)),
+        os.path.join(str(SAMPLES_DIR), "cctv_giai_phong.mp4"),
+        os.path.join(str(SAMPLES_DIR), "cctv_hang_bai.mp4"),
+        os.path.join(str(SAMPLES_DIR), "cctv_nhat_tan.mp4"),
+        os.path.join(str(SAMPLES_DIR), "sample_traffic.mp4")
     ]
     for c in candidates:
         if os.path.exists(c):
@@ -230,6 +234,9 @@ class CameraWorker:
             if not ret:
                 cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                 frame_idx = 0
+                # Khi video lặp lại từ đầu: dọn bớt track cũ và crossed_ids để đếm lại chu kỳ mới chính xác
+                self.crossed_ids.clear()
+                self.tracked_objects.clear()
                 continue
 
             frame_idx += 1
@@ -423,6 +430,12 @@ class CameraWorker:
                 cg_lvl = 4
                 cg_name = "Ùn tắc nghiêm trọng"
 
+            # 6. Tính toán hàng chờ phương tiện (Queue detection trong Zone)
+            # Xe dừng chờ: vận tốc < 5.0 km/h hoặc tốc độ thấp trong vùng trước vạch dừng
+            queue_vehicles = sum(1 for obj in self.tracked_objects.values() if obj.get("speed", 0.0) < 6.0)
+            # Ước tính chiều dài hàng chờ (mét) dựa theo PCU và khoảng cách an toàn (trung bình ~3.5m / PCU)
+            queue_length_m = round(min(self.length_m, queue_vehicles * 4.0), 1)
+
             # Cập nhật telemetry thời gian thực
             self.metrics = {
                 "total_vehicles": roi_count,
@@ -432,6 +445,8 @@ class CameraWorker:
                 "flow": flow,
                 "speed": speed,
                 "fps": curr_fps,
+                "queue_vehicles": queue_vehicles,
+                "queue_length_m": queue_length_m,
                 "congestion_level": cg_lvl,
                 "congestion_name": cg_name,
                 "last_updated": time.time(),
@@ -520,9 +535,9 @@ class CameraWorker:
                 cv2.putText(frame_annotated, tag, (x1 + 4, max(14, y1 - 5)), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (255, 255, 255), 1, cv2.LINE_AA)
 
             # 4. Thêm banner telemetry nhỏ góc trên bên trái
-            hud_text = f"XE TRONG NGA TU: {roi_count} | PCU: {pcu:.1f} | K: {density:.0f} xe/km | Q: {int(flow)} xe/h | V: {speed:.1f} km/h"
+            hud_text = f"XE: {roi_count} | PCU: {pcu:.1f} | K: {density:.0f} xe/km | Q: {int(flow)} xe/h | V: {speed:.1f} km/h | HANG CHO: {queue_vehicles} xe ({queue_length_m:.0f}m)"
             cv2.rectangle(frame_annotated, (12, 12), (16 + len(hud_text) * 9, 38), (15, 23, 42), -1)
-            cv2.putText(frame_annotated, hud_text, (20, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 215, 255), 1, cv2.LINE_AA)
+            cv2.putText(frame_annotated, hud_text, (20, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.42, (0, 215, 255), 1, cv2.LINE_AA)
 
             # Chế độ lưới (Low stream): 480px chiều rộng
             frame_low = cv2.resize(frame_annotated, (480, int(480 * h / w)), interpolation=cv2.INTER_AREA)
@@ -550,74 +565,63 @@ class CameraManager:
         stations_config = [
             {
                 "id": "CAM-01",
-                "name": "Trạm Giám Sát CAM-01 (cam1.mp4)",
-                "district": "uploads/CAM-01/cam1.mp4",
-                "bearing": "Lưu lượng ngã tư",
-                "video": "uploads/CAM-01/cam1.mp4",
+                "name": "Trạm CAM-01 (Nút giao vạch dừng - video1.mp4)",
+                "district": "Quận 1 · Nút giao trọng điểm",
+                "bearing": "Làn thẳng & Hàng chờ đèn tín hiệu",
+                "video": r"C:\Users\syanh\Downloads\video dự án\video1.mp4",
                 "roi": [
-                    [0.22, 0.44],
-                    [0.82, 0.44],
-                    [0.82, 0.32],
-                    [0.70, 0.23],
-                    [0.42, 0.23],
-                    [0.22, 0.32]
+                    [0.10, 0.95],
+                    [0.78, 0.95],
+                    [0.72, 0.55],
+                    [0.10, 0.55]
                 ],
                 "length_m": 45.0,
-                "width_m": 16.0
+                "width_m": 14.0
             },
             {
                 "id": "CAM-02",
-                "name": "Trạm Giám Sát CAM-02 (cam2.mkv)",
-                "district": "uploads/CAM-01/cam2.mkv",
-                "bearing": "Lưu lượng ngã tư",
-                "video": "uploads/CAM-01/cam2.mkv",
+                "name": "Trạm CAM-02 (Đường đôi dải phân cách - video2.mp4)",
+                "district": "Quận Bình Thạnh · Tuyến trục chính",
+                "bearing": "Làn hỗn hợp & Ô tô một chiều",
+                "video": r"C:\Users\syanh\Downloads\video dự án\video2.mp4",
                 "roi": [
-                    [0.14, 0.44],
-                    [0.69, 0.44],
-                    [0.78, 0.30],
-                    [0.64, 0.17],
-                    [0.38, 0.17],
-                    [0.15, 0.24],
-                    [0.08, 0.38]
+                    [0.02, 0.98],
+                    [0.68, 0.98],
+                    [0.55, 0.30],
+                    [0.18, 0.30]
                 ],
-                "length_m": 40.0,
-                "width_m": 15.0
+                "length_m": 60.0,
+                "width_m": 12.0
             },
             {
                 "id": "CAM-03",
-                "name": "Trạm Giám Sát CAM-03 (cam3.mkv)",
-                "district": "uploads/CAM-01/cam3.mkv",
-                "bearing": "Lưu lượng ngã tư",
-                "video": "uploads/CAM-01/cam3.mkv",
+                "name": "Trạm CAM-03 (Quan sát ban đêm ANPR - video3.mp4)",
+                "district": "Quận Đống Đa · Giám sát ban đêm",
+                "bearing": "Làn xe một chiều ban đêm",
+                "video": r"C:\Users\syanh\Downloads\video dự án\video3.mp4",
                 "roi": [
-                    [0.14, 0.44],
-                    [0.69, 0.44],
-                    [0.78, 0.30],
-                    [0.64, 0.17],
-                    [0.38, 0.17],
-                    [0.15, 0.24],
-                    [0.08, 0.38]
+                    [0.10, 0.95],
+                    [0.85, 0.95],
+                    [0.75, 0.35],
+                    [0.15, 0.35]
                 ],
-                "length_m": 40.0,
-                "width_m": 15.0
+                "length_m": 35.0,
+                "width_m": 10.0
             },
             {
                 "id": "CAM-04",
-                "name": "Trạm Giám Sát CAM-04 (cam4.mkv)",
-                "district": "uploads/CAM-01/cam4.mkv",
-                "bearing": "Lưu lượng ngã tư",
-                "video": "uploads/CAM-01/cam4.mkv",
+                "name": "Trạm CAM-04 (Ngã 4 đèn tín hiệu - license_plate_test.mp4)",
+                "district": "Quận Cầu Giấy · Ngã 4 đô thị",
+                "bearing": "Hàng chờ đèn đỏ & Vạch người đi bộ",
+                "video": r"C:\Users\syanh\Downloads\video dự án\license_plate_test.mp4",
                 "roi": [
-                    [0.14, 0.44],
-                    [0.69, 0.44],
-                    [0.78, 0.30],
-                    [0.64, 0.17],
-                    [0.38, 0.17],
-                    [0.15, 0.24],
-                    [0.08, 0.38]
+                    [0.12, 0.98],
+                    [0.85, 0.98],
+                    [0.80, 0.56],
+                    [0.32, 0.56]
                 ],
                 "length_m": 40.0,
-                "width_m": 15.0
+                "width_m": 16.0
             }
         ]
 

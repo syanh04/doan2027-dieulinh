@@ -533,24 +533,161 @@
             </section>
 
             <!-- ======================================================== -->
-            <!-- TAB 5: NGUỒN VIDEO (VIDEO SOURCE MANAGEMENT & UPLOAD)   -->
+            <!-- TAB 5: NGUỒN VIDEO & TẢI LÊN (SOURCES & MEDIA MANAGEMENT)-->
             <!-- ======================================================== -->
             <section class="tab-panel" id="tabPanel-sources">
                 <div class="sources-tab-layout">
-                    <div class="sources-header-row">
-                        <span class="section-title">Quản lý nguồn video cho từng trạm camera</span>
-                        <button class="btn btn-primary" id="btnTriggerUploadModal">
-                            <i data-lucide="upload" class="icon-xs"></i>
-                            <span>Tải lên video mới cho camera</span>
-                        </button>
+                    
+                    <!-- PHẦN 1: 4 TRẠM CAMERA & ZONE GIÁM SÁT THỜI GIAN THỰC -->
+                    <div style="background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: 10px; padding: 20px; margin-bottom: 24px;">
+                        <div class="sources-header-row" style="margin-bottom: 16px;">
+                            <div>
+                                <span class="section-title" style="display: flex; align-items: center; gap: 8px;">
+                                    <i data-lucide="video" class="icon-sm" style="color: var(--accent-blue);"></i>
+                                    4 Nguồn Video & Zone Giám sát Camera Hiện tại
+                                </span>
+                                <p style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">
+                                    Mỗi camera phát lặp video thật độc lập, tự động nhận diện và tính toán Lưu lượng (Q), Mật độ (K), Vận tốc (V) và Hàng chờ trong phạm vi Zone hiệu chuẩn riêng.
+                                </p>
+                            </div>
+                            <button class="btn btn-primary" id="btnTriggerUploadModal">
+                                <i data-lucide="upload" class="icon-xs"></i>
+                                <span>Tải lên video mới cho camera</span>
+                            </button>
+                        </div>
+
+                        <div class="video-cards-grid" id="sourcesCameraGrid">
+                            <!-- Populated dynamically via JS -->
+                        </div>
                     </div>
 
-                    <div class="video-cards-grid" id="sourcesCameraGrid">
-                        <!-- Populated dynamically via JS -->
+                    <!-- PHẦN 2: PHÂN TÍCH ẢNH TĨNH VỚI YOLO AI (TRỰC QUAN & DỄ DÙNG) -->
+                    <div class="image-analysis-section" style="background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: 10px; padding: 20px; margin-bottom: 24px;">
+                        <div class="sources-header-row" style="margin-bottom: 16px;">
+                            <div>
+                                <span class="section-title" style="display: flex; align-items: center; gap: 8px;">
+                                    <i data-lucide="image" class="icon-sm" style="color: #10b981;"></i>
+                                    Phân tích & Đếm xe qua Tệp Ảnh Tĩnh (YOLOv8 AI)
+                                </span>
+                                <p style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">
+                                    Chọn hoặc kéo thả ảnh chụp giao thông bất kỳ từ máy tính để phát hiện 5 loại phương tiện, ước tính tức thời hệ số PCU và mật độ nút giao.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: 1.1fr 1fr; gap: 24px;" class="image-upload-controls-grid">
+                            <!-- Cột trái: Điều khiển & Tải ảnh -->
+                            <div style="display: flex; flex-direction: column; gap: 16px;">
+                                <div class="form-group">
+                                    <label class="form-label" style="font-weight: 600; color: var(--text-primary);">1. Chọn tệp ảnh từ máy tính (.jpg, .png, .jpeg, .webp):</label>
+                                    <input type="file" id="imageFileInput" accept="image/jpeg,image/png,image/webp,image/jpg" class="form-input" style="cursor: pointer;">
+                                </div>
+                                <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 14px;">
+                                    <div class="form-group">
+                                        <label class="form-label" style="font-weight: 600;">2. Chế độ AI:</label>
+                                        <select id="imageModeSelect" class="form-input">
+                                            <option value="detection">Nhận diện & Đếm xe (Object Detection)</option>
+                                            <option value="classification">Phân loại phương tiện (Classification)</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label class="form-label" style="font-weight: 600;">3. Ngưỡng tin cậy (Confidence): <span id="lblImageConfVal" class="tabular-nums" style="color: var(--accent-blue); font-weight: 700;">25%</span></label>
+                                        <input type="range" id="imageConfSlider" min="10" max="80" value="25" class="slider-full" style="margin-top: 8px;">
+                                    </div>
+                                </div>
+                                <button class="btn btn-primary" id="btnAnalyzeImage" style="width: 100%; justify-content: center; padding: 12px 18px; font-weight: 600; font-size: 14px; background: #2563eb;">
+                                    <i data-lucide="sparkles" class="icon-xs"></i>
+                                    <span>Bắt đầu Phân tích Hình ảnh ngay</span>
+                                </button>
+                            </div>
+
+                            <!-- Cột phải: Xem trước ảnh tải lên -->
+                            <div id="imagePreviewArea" style="min-height: 200px; border: 2px dashed rgba(255, 255, 255, 0.15); border-radius: 10px; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.25); overflow: hidden; position: relative;">
+                                <div id="imagePlaceholderText" style="text-align: center; color: var(--text-muted); padding: 24px;">
+                                    <i data-lucide="upload-cloud" style="width: 44px; height: 44px; margin: 0 auto 10px; opacity: 0.6; color: var(--accent-blue);"></i>
+                                    <div style="font-size: 13px; font-weight: 500;">Chưa chọn ảnh nào</div>
+                                    <div style="font-size: 11px; opacity: 0.7; margin-top: 4px;">Chọn ảnh giao thông ở bên trái để xem trước tại đây</div>
+                                </div>
+                                <img id="imagePreviewImg" style="max-width: 100%; max-height: 240px; object-fit: contain; display: none;" alt="Preview">
+                            </div>
+                        </div>
+
+                        <!-- Khung kết quả phân tích ảnh (Hiện sau khi bấm phân tích) -->
+                        <div id="imageAnalysisResultCard" style="display: none; margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border-color);">
+                            <div style="display: grid; grid-template-columns: 1.2fr 1fr; gap: 24px;">
+                                <!-- Ảnh kết quả với Bounding Box -->
+                                <div>
+                                    <span style="font-size: 13px; font-weight: 600; color: var(--text-secondary); margin-bottom: 8px; display: block;">
+                                        Ảnh kết quả nhận diện (YOLO Bounding Box & Phân loại):
+                                    </span>
+                                    <div style="border-radius: 8px; overflow: hidden; border: 1px solid var(--border-color); background: #000; text-align: center;">
+                                        <img id="imageResultAnnotated" style="max-width: 100%; max-height: 380px; object-fit: contain;" alt="Annotated Result">
+                                    </div>
+                                </div>
+
+                                <!-- Bảng thống kê chi tiết -->
+                                <div style="display: flex; flex-direction: column; gap: 14px;">
+                                    <span style="font-size: 13px; font-weight: 600; color: var(--text-secondary);">
+                                        Chỉ số giao thông & Nhận diện:
+                                    </span>
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                                        <div style="background: var(--bg-canvas); padding: 12px; border-radius: 8px; border: 1px solid var(--border-color);">
+                                            <div style="font-size: 11px; color: var(--text-muted);">Tổng xe nhận diện</div>
+                                            <div style="font-size: 22px; font-weight: 700; color: var(--accent-blue);" id="resImgTotalVeh" class="tabular-nums">0</div>
+                                        </div>
+                                        <div style="background: var(--bg-canvas); padding: 12px; border-radius: 8px; border: 1px solid var(--border-color);">
+                                            <div style="font-size: 11px; color: var(--text-muted);">Trạng thái nút giao</div>
+                                            <div style="margin-top: 6px;"><span class="signal-badge normal" id="resImgCongestionBadge">Thông thoáng</span></div>
+                                        </div>
+                                        <div style="background: var(--bg-canvas); padding: 12px; border-radius: 8px; border: 1px solid var(--border-color);">
+                                            <div style="font-size: 11px; color: var(--text-muted);">Điểm PCU tương đương</div>
+                                            <div style="font-size: 20px; font-weight: 700; color: #a855f7;" id="resImgPcu" class="tabular-nums">0.0</div>
+                                        </div>
+                                        <div style="background: var(--bg-canvas); padding: 12px; border-radius: 8px; border: 1px solid var(--border-color);">
+                                            <div style="font-size: 11px; color: var(--text-muted);">Thời gian xử lý</div>
+                                            <div style="font-size: 20px; font-weight: 700; color: var(--text-primary);" id="resImgLatency" class="tabular-nums">0 ms</div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Thống kê 5 loại phương tiện -->
+                                    <div style="background: var(--bg-canvas); padding: 14px; border-radius: 8px; border: 1px solid var(--border-color);">
+                                        <div style="font-size: 12px; font-weight: 600; margin-bottom: 10px;">Số lượng chi tiết 5 loại phương tiện:</div>
+                                        <div style="display: flex; flex-direction: column; gap: 8px; font-size: 13px;">
+                                            <div style="display: flex; justify-content: space-between;">
+                                                <span><span class="color-dot dot-motorcycle"></span> Xe máy:</span>
+                                                <strong id="resImgCountMotorcycle" class="tabular-nums">0</strong>
+                                            </div>
+                                            <div style="display: flex; justify-content: space-between;">
+                                                <span><span class="color-dot dot-car"></span> Ô tô con:</span>
+                                                <strong id="resImgCountCar" class="tabular-nums">0</strong>
+                                            </div>
+                                            <div style="display: flex; justify-content: space-between;">
+                                                <span><span class="color-dot dot-bus"></span> Xe khách:</span>
+                                                <strong id="resImgCountBus" class="tabular-nums">0</strong>
+                                            </div>
+                                            <div style="display: flex; justify-content: space-between;">
+                                                <span><span class="color-dot dot-truck"></span> Xe tải:</span>
+                                                <strong id="resImgCountTruck" class="tabular-nums">0</strong>
+                                            </div>
+                                            <div style="display: flex; justify-content: space-between;">
+                                                <span><span class="color-dot dot-bicycle"></span> Xe đạp:</span>
+                                                <strong id="resImgCountBicycle" class="tabular-nums">0</strong>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div style="font-size: 12px; color: var(--accent-emerald); display: flex; align-items: center; gap: 6px;">
+                                        <i data-lucide="check-circle-2" class="icon-xs"></i>
+                                        <span>Đã tự động lưu bản ghi phân tích vào thẻ Nhật ký (Audit Logs).</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
-                    <div class="sources-table-section">
-                        <span class="section-subtitle">Kho video mẫu & Tệp đã tải lên</span>
+                    <!-- PHẦN 3: KHO VIDEO TẢI LÊN & LỊCH SỬ TỆP -->
+                    <div class="sources-table-section" style="background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: 10px; padding: 20px;">
+                        <span class="section-subtitle" style="font-weight: 600; font-size: 14px; margin-bottom: 12px; display: block;">Danh sách tệp video đã tải lên hệ thống</span>
                         <table class="data-table">
                             <thead>
                                 <tr>
@@ -569,55 +706,6 @@
                             </tbody>
                         </table>
                     </div>
-
-                    <!-- PHẦN PHÂN TÍCH ẢNH TĨNH VỚI YOLO AI (IMAGE UPLOAD & DETECTION) -->
-                    <div class="image-analysis-section" style="margin-top: 24px; background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: 8px; padding: 20px;">
-                        <div class="sources-header-row" style="margin-bottom: 16px;">
-                            <div>
-                                <span class="section-title" style="display: flex; align-items: center; gap: 8px;">
-                                    <i data-lucide="image" class="icon-sm" style="color: var(--accent-blue);"></i>
-                                    Tải lên & Phân tích Ảnh phương tiện (YOLO AI)
-                                </span>
-                                <p style="font-size: 13px; color: var(--text-secondary); margin-top: 4px;">
-                                    Nhận diện trực tiếp 5 loại phương tiện (Xe máy, Ô tô con, Xe khách, Xe tải, Xe đạp), tính toán PCU và mật độ tức thời từ ảnh tĩnh. Kết quả sẽ tự động lưu vào Nhật ký.
-                                </p>
-                            </div>
-                        </div>
-
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;" class="image-upload-controls-grid">
-                            <!-- Khung chọn ảnh & thiết lập -->
-                            <div style="display: flex; flex-direction: column; gap: 14px;">
-                                <div class="form-group">
-                                    <label class="form-label">Chọn tệp ảnh từ máy tính (.jpg, .png, .jpeg, .webp):</label>
-                                    <input type="file" id="imageFileInput" accept="image/jpeg,image/png,image/webp,image/jpg" class="form-input">
-                                </div>
-                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-                                    <div class="form-group">
-                                        <label class="form-label">Chế độ phân tích:</label>
-                                        <select id="imageModeSelect" class="form-input">
-                                            <option value="detection">Nhận diện & Đếm xe (Detection)</option>
-                                            <option value="classification">Phân loại phương tiện (Classification)</option>
-                                        </select>
-                                    </div>
-                                    <div class="form-group">
-                                        <label class="form-label">Ngưỡng tin cậy (Confidence): <span id="lblImageConfVal" class="tabular-nums" style="color: var(--accent-blue); font-weight: 600;">25%</span></label>
-                                        <input type="range" id="imageConfSlider" min="10" max="80" value="25" class="slider-full" style="margin-top: 6px;">
-                                    </div>
-                                </div>
-                                <button class="btn btn-primary" id="btnAnalyzeImage" style="width: 100%; justify-content: center; padding: 10px 16px;">
-                                    <i data-lucide="sparkles" class="icon-xs"></i>
-                                    <span>Bắt đầu phân tích hình ảnh</span>
-                                </button>
-                            </div>
-
-                            <!-- Khung xem trước và trạng thái ảnh -->
-                            <div id="imagePreviewArea" style="min-height: 180px; border: 2px dashed var(--border-color); border-radius: 8px; display: flex; align-items: center; justify-content: center; background: var(--bg-canvas); overflow: hidden; position: relative;">
-                                <div id="imagePlaceholderText" style="text-align: center; color: var(--text-muted); padding: 20px;">
-                                    <i data-lucide="upload-cloud" style="width: 36px; height: 36px; margin: 0 auto 8px; opacity: 0.5;"></i>
-                                    <div>Chưa chọn ảnh. Chọn một tệp ảnh để xem trước và nhận diện.</div>
-                                </div>
-                                <img id="imagePreviewImg" style="max-width: 100%; max-height: 240px; object-fit: contain; display: none;" alt="Preview">
-                            </div>
                         </div>
 
                         <!-- Khung kết quả phân tích ảnh (Hiện sau khi phân tích) -->
